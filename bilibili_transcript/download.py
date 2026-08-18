@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -170,7 +171,10 @@ def download_audio_via_ytdlp(
     page: int,
     out_mp3: Path,
     cookies_from_browser: Optional[str] = None,
+    cookies_file: Optional[str] = None,
 ) -> None:
+    from bilibili_transcript.wbi import to_netscape_cookie_file
+
     out_mp3.parent.mkdir(parents=True, exist_ok=True)
     url = f"{video_page_url(bvid)}?p={page}"
     cmd = [
@@ -184,10 +188,22 @@ def download_audio_via_ytdlp(
         str(out_mp3.with_suffix(".%(ext)s")),
         url,
     ]
-    if cookies_from_browser:
+    netscape_tmp: Optional[str] = None
+    if cookies_file:
+        netscape_tmp = to_netscape_cookie_file(cookies_file)
+        if netscape_tmp:
+            cmd[1:1] = ["--cookies", netscape_tmp]
+    elif cookies_from_browser:
         cmd[1:1] = ["--cookies-from-browser", cookies_from_browser]
     logger.info("Running yt-dlp fallback…")
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True)
+    finally:
+        if netscape_tmp:
+            try:
+                os.unlink(netscape_tmp)
+            except OSError:
+                pass
 
 
 def resolve_mp3_after_ytdlp(out_mp3: Path) -> Path:
@@ -212,6 +228,7 @@ def download_part_mp3(
     out_dir: Path,
     prefer_ytdlp: bool = False,
     cookies_from_browser: Optional[str] = None,
+    cookies_file: Optional[str] = None,
 ) -> Path:
     """
     page: 1-based index.
@@ -222,12 +239,20 @@ def download_part_mp3(
     out_mp3 = out_dir / f"{base}.mp3"
 
     if prefer_ytdlp:
-        download_audio_via_ytdlp(bvid, page, out_mp3, cookies_from_browser=cookies_from_browser)
+        download_audio_via_ytdlp(
+            bvid, page, out_mp3,
+            cookies_from_browser=cookies_from_browser,
+            cookies_file=cookies_file,
+        )
         return resolve_mp3_after_ytdlp(out_mp3)
 
     try:
         return download_audio_via_api(bvid, cid, out_dir, basename=base)
     except Exception as e:
         logger.warning("API download failed (%s), trying yt-dlp…", e)
-        download_audio_via_ytdlp(bvid, page, out_mp3, cookies_from_browser=cookies_from_browser)
+        download_audio_via_ytdlp(
+            bvid, page, out_mp3,
+            cookies_from_browser=cookies_from_browser,
+            cookies_file=cookies_file,
+        )
         return resolve_mp3_after_ytdlp(out_mp3)

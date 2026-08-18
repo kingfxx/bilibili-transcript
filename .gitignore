@@ -10,3 +10,7 @@ build/
 *.mp4
 .env
 .env.local
+
+# 输出目录与敏感文件
+case_outputs/
+bili_cookie.txt

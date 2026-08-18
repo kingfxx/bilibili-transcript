@@ -12,7 +12,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from bilibili_transcript.wbi import session_with_browser_cookies, sign_wbi
+from bilibili_transcript.wbi import (
+    session_with_browser_cookies,
+    session_with_cookies_file,
+    sign_wbi,
+    to_netscape_cookie_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -127,13 +132,21 @@ def try_fetch_official_segments(
     cid: int,
     aid: int,
     cookies_from_browser: Optional[str] = None,
+    cookies_file: Optional[str] = None,
 ) -> Optional[Tuple[List[Dict[str, Any]], str, Dict[str, Any]]]:
     """
     若存在可下载的官方字幕，返回 (segments, full_text, meta)。
     meta 含 lan, subtitle_url 等；否则 None。
+    cookies_file 与 cookies_from_browser 二选一，前者优先。
     """
-    session = session_with_browser_cookies(bvid, cookies_from_browser)
-    browser_cookie_injected = bool(cookies_from_browser and str(cookies_from_browser).strip())
+    if cookies_file:
+        session = session_with_cookies_file(bvid, cookies_file)
+    else:
+        session = session_with_browser_cookies(bvid, cookies_from_browser)
+    browser_cookie_injected = bool(
+        (cookies_from_browser and str(cookies_from_browser).strip())
+        or (cookies_file and str(cookies_file).strip())
+    )
     tracks = list_official_subtitle_tracks(
         bvid, cid, aid, session, browser_cookie_injected=browser_cookie_injected
     )
@@ -207,14 +220,21 @@ def parse_srt(text: str) -> List[Dict[str, Any]]:
 def try_fetch_subtitles_ytdlp(
     page_url: str,
     cookies_from_browser: Optional[str] = None,
+    cookies_file: Optional[str] = None,
 ) -> Optional[Tuple[List[Dict[str, Any]], str]]:
     """无官方接口字幕时，用 yt-dlp 写本地字幕文件再解析。"""
+    import os
     import sys
 
     tmp = Path(tempfile.mkdtemp(prefix="bili_sub_"))
     out_template = str(tmp / "v.%(ext)s")
     cmd: List[str] = [sys.executable, "-m", "yt_dlp"]
-    if cookies_from_browser:
+    netscape_tmp: Optional[str] = None
+    if cookies_file:
+        netscape_tmp = to_netscape_cookie_file(cookies_file)
+        if netscape_tmp:
+            cmd.extend(["--cookies", netscape_tmp])
+    elif cookies_from_browser:
         cmd.extend(["--cookies-from-browser", cookies_from_browser])
     cmd.extend(
         [
@@ -240,6 +260,12 @@ def try_fetch_subtitles_ytdlp(
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         logger.warning("yt-dlp 字幕失败: %s", e)
         return None
+    finally:
+        if netscape_tmp:
+            try:
+                os.unlink(netscape_tmp)
+            except OSError:
+                pass
 
     srt_files = sorted(tmp.glob("*.srt"))
     if not srt_files:

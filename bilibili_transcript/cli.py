@@ -93,7 +93,24 @@ def obtain_part_segments(
     )
 
 
+def default_cookies_file(root: Optional[Path] = None) -> Optional[str]:
+    """项目根目录下的 bili_cookie.txt 作为默认 cookie 文件；不存在时返回 None。"""
+    base = root or Path(__file__).resolve().parent.parent
+    p = base / "bili_cookie.txt"
+    return str(p) if p.is_file() else None
+
+
+def resolve_cookies_file(cookies_file: Optional[str], root: Optional[Path] = None) -> Optional[str]:
+    """显式 --cookies-file 优先；未指定时回退到默认 bili_cookie.txt。"""
+    if cookies_file and str(cookies_file).strip():
+        return cookies_file
+    return default_cookies_file(root)
+
+
 def run_pipeline(args: argparse.Namespace) -> int:
+    args.cookies_file = resolve_cookies_file(args.cookies_file)
+    if args.cookies_file:
+        logger.info("使用 Cookie 文件: %s", args.cookies_file)
     provider = detect_provider(args.input)
     logger.info("Source: %s", provider.name)
 
@@ -243,6 +260,10 @@ def _add_transcript_args(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--cookies-from-browser", default=None, metavar="BROWSER",
         help="Read cookies from local browser for authenticated requests (e.g. chrome)",
+    )
+    p.add_argument(
+        "--cookies-file", default=None, metavar="PATH",
+        help="Load cookies from a file (JSON array or Netscape format) for authenticated requests",
     )
     p.add_argument(
         "--prefer-subtitles", action=argparse.BooleanOptionalAction, default=True,

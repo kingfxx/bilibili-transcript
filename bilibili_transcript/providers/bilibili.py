@@ -63,6 +63,7 @@ class BilibiliProvider(TranscriptProvider):
         off = try_fetch_official_segments(
             meta.video_id, cid, meta.aid,
             cookies_from_browser=args.cookies_from_browser,
+            cookies_file=args.cookies_file,
         )
         if off:
             segs, full, track_meta = off
@@ -72,9 +73,11 @@ class BilibiliProvider(TranscriptProvider):
                 extra={"lan": track_meta.get("lan"), "subtitle_url": track_meta.get("subtitle_url")},
             )
 
-        if args.cookies_from_browser or args.ytdlp_subs:
+        if args.cookies_from_browser or args.cookies_file or args.ytdlp_subs:
             yd = try_fetch_subtitles_ytdlp(
-                page_url, cookies_from_browser=args.cookies_from_browser,
+                page_url,
+                cookies_from_browser=args.cookies_from_browser,
+                cookies_file=args.cookies_file,
             )
             if yd:
                 segs, full = yd
@@ -98,4 +101,5 @@ class BilibiliProvider(TranscriptProvider):
             out_dir=out_dir,
             prefer_ytdlp=args.ytdlp,
             cookies_from_browser=args.cookies_from_browser,
+            cookies_file=args.cookies_file,
         )

@@ -11,6 +11,11 @@ pip install -e .                  # 或 pip install -r requirements.txt
 python -m bilibili_transcript "BV1xxxxxxxxx" -o case_outputs/BV1xxxxxxxxx
 ```
 
+> **登录态（可选但推荐）**：部分稿件的字幕仅在登录后返回。把浏览器扩展导出的 cookie 保存为
+> 项目根目录下的 `bili_cookie.txt`（JSON 数组或 Netscape 格式均可），脚本会自动加载；
+> 也可用 `--cookies-file path/to/cookies.txt` 指定其他位置，或用 `--cookies-from-browser chrome`
+> 直接从浏览器读取（注意新版 Chrome/Edge 加密可能读取失败）。
+
 ## 流程总览
 
 ```
@@ -61,18 +66,20 @@ bilibili_transcript/
 ## 字幕策略（每个分 P 独立判断）
 
 1. **B 站官方 CC**（推荐）— WBI 签名请求 `x/player/wbi/v2`
-2. **yt-dlp 字幕文件** — 需 `--cookies-from-browser` 或 `--ytdlp-subs`
+2. **yt-dlp 字幕文件** — 需登录 cookie（`--cookies-file` / `--cookies-from-browser`）或 `--ytdlp-subs`
 3. **本机 faster-whisper ASR** — 以上均不可用时的兜底
 
 部分稿件的字幕**仅在登录态返回**。未登录时接口返回空列表属正常现象，不是 bug。
+脚本会按优先级注入登录态：项目根目录 `bili_cookie.txt`（默认）→ `--cookies-file` 显式指定 → `--cookies-from-browser`。
+两种 cookie 格式均支持：浏览器扩展导出的 **JSON 数组**（EditThisCookie / Cookie-Editor 格式）与 **Netscape**（yt-dlp 兼容）。
 
 ## 常用参数
 
 
 | 场景               | 参数                                                        |
 | ---------------- | --------------------------------------------------------- |
-| 默认（能抓字幕就不 ASR）   | 无额外参数                                                     |
-| 登录字幕在网页有、接口无     | `--cookies-from-browser chrome`                           |
+| 默认（能抓字幕就不 ASR）   | 无额外参数（自动加载根目录 `bili_cookie.txt`）                 |
+| 登录字幕在网页有、接口无     | `--cookies-file bili_cookie.txt` 或 `--cookies-from-browser chrome` |
 | 强制 ASR           | `--force-asr`                                             |
 | 仅输出 JSON         | `--json-only`                                             |
 | 官方无 CC 时试 yt-dlp | `--ytdlp-subs`                                            |

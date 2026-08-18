@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import os
+import tempfile
 import time
 import urllib.parse
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -120,3 +124,82 @@ def session_with_browser_cookies(bvid: str, browser: Optional[str]) -> requests.
     except Exception as e:
         logger.warning("读取浏览器 Cookie 失败（官方字幕可能仍为空）: %s", e)
     return s
+
+
+def load_cookies_file(path: str) -> "requests.cookies.RequestsCookieJar":
+    """
+    读取 cookie 文件（JSON 数组或 Netscape 格式），返回 cookie jar。
+    文件不存在或解析失败时返回空 jar（不抛错，让调用方按匿名请求处理）。
+    """
+    jar = requests.cookies.RequestsCookieJar()
+    p = Path(path)
+    if not p.is_file():
+        logger.warning("Cookie 文件不存在: %s", p)
+        return jar
+    try:
+        raw = p.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.warning("读取 Cookie 文件失败: %s", e)
+        return jar
+    stripped = raw.lstrip()
+    try:
+        if stripped.startswith("["):
+            for c in json.loads(raw):
+                jar.set(
+                    c.get("name", ""),
+                    c.get("value", ""),
+                    domain=c.get("domain", ""),
+                    path=c.get("path", "/"),
+                )
+        else:
+            for line in raw.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) < 7:
+                    continue
+                domain, _flag, path, _secure, _expires, name, value = parts[:7]
+                jar.set(name, value, domain=domain, path=path)
+        logger.info("已从 %s 加载 %d 个 Cookie。", p.name, len(jar))
+    except Exception as e:
+        logger.warning("解析 Cookie 文件失败: %s", e)
+        jar.clear()
+    return jar
+
+
+def session_with_cookies_file(bvid: str, cookies_file: Optional[str]) -> requests.Session:
+    """在 session_with_headers 基础上注入 cookie 文件里的登录态。"""
+    s = session_with_headers(bvid)
+    if not cookies_file or not str(cookies_file).strip():
+        return s
+    jar = load_cookies_file(str(cookies_file))
+    if jar:
+        s.cookies.update(jar)
+    return s
+
+
+def to_netscape_cookie_file(cookies_file: str) -> Optional[str]:
+    """
+    把 JSON 数组 / Netscape 格式的 cookie 文件统一转成 Netscape 临时文件，
+    供 yt-dlp 的 --cookies 使用。返回临时文件路径（调用方负责清理），失败返回 None。
+    """
+    jar = load_cookies_file(cookies_file)
+    if not jar:
+        return None
+    lines: List[str] = ["# Netscape HTTP Cookie File"]
+    for c in jar:
+        domain = c.domain or ""
+        path = c.path or "/"
+        flag = "TRUE" if domain.startswith(".") else "FALSE"
+        secure = "TRUE" if c.secure else "FALSE"
+        expires = str(int(c.expires)) if c.expires else "0"
+        lines.append(f"{domain}\t{flag}\t{path}\t{secure}\t{expires}\t{c.name}\t{c.value}")
+    try:
+        fd, tmp_path = tempfile.mkstemp(prefix="bili_cookies_", suffix=".txt")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+        return tmp_path
+    except Exception as e:
+        logger.warning("写出 Netscape cookie 临时文件失败: %s", e)
+        return None
