@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import List, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 _DIVIDER_CSS = """
   .part-divider {
@@ -23,6 +23,9 @@ _DIVIDER_CSS = """
     letter-spacing: 0.3em;
     padding: 14px 0 6px;
   }"""
+
+# 分P文件：老木匠20260815直播_P1_成稿.html（也兼容 老木匠20260815直播_P1.html）
+_PART_FILE_RE = re.compile(r"^(.*)_P(\d+)(_成稿)?\.html$")
 
 
 def _extract_container(text: str) -> str:
@@ -72,3 +75,41 @@ def merge_html_paths(paths: List[str]) -> Path:
     files = [Path(x) for x in paths]
     out = files[0].with_name(f"{files[0].stem}_合并.html")
     return merge_morandi_html(files, out)
+
+
+def merge_part_groups(directory: Path, backup_dir: Optional[Path] = None) -> List[Path]:
+    """Merge each group of part files (``*_P{N}`` sharing one prefix) into
+    ``{prefix}_成稿_合并.html``, then move the part files into ``backup_dir``
+    (default: ``directory/_分P原件备份``) so the index keeps one entry per day.
+
+    Non-part HTML files are left untouched. Returns the merged output paths
+    (empty when no part files exist).
+    """
+    directory = Path(directory)
+    if backup_dir is None:
+        backup_dir = directory / "_分P原件备份"
+    backup_dir = Path(backup_dir)
+
+    groups: Dict[str, List[Tuple[int, Path]]] = {}
+    for f in sorted(directory.glob("*.html")):
+        m = _PART_FILE_RE.match(f.name)
+        if not m:
+            continue
+        prefix = m.group(1).rstrip()
+        if prefix.endswith("_成稿"):
+            prefix = prefix[: -len("_成稿")]
+        groups.setdefault(prefix, []).append((int(m.group(2)), f))
+
+    if not groups:
+        return []
+
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    merged: List[Path] = []
+    for prefix, items in sorted(groups.items()):
+        items.sort(key=lambda t: t[0])
+        out = directory / f"{prefix}_成稿_合并.html"
+        merge_morandi_html([p for _, p in items], out)
+        merged.append(out)
+        for _, p in items:
+            p.replace(backup_dir / p.name)
+    return merged

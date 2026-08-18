@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from bilibili_transcript.merge_html import merge_morandi_html
+from bilibili_transcript.merge_html import merge_morandi_html, merge_part_groups
 
 TEMPLATE_HEAD = """<!DOCTYPE html>
 <html lang="zh-CN">
@@ -76,3 +76,62 @@ class TestMergeMorandiHtml:
         text = out.read_text(encoding="utf-8")
         assert text.count('<div class="part-divider-label">') == 0
         assert text.count('class="container"') == 1
+
+
+class TestMergePartGroups:
+    def test_merges_groups_moves_parts_keeps_singles(self, tmp_path):
+        parts15 = [
+            (tmp_path / "老木匠20260815直播_P1_成稿.html", _html("P1", "P1")),
+            (tmp_path / "老木匠20260815直播_P2_成稿.html", _html("P2", "P2")),
+        ]
+        parts10 = [
+            (tmp_path / "老木匠20260810直播_P1_成稿.html", _html("P1b", "P1b")),
+            (tmp_path / "老木匠20260810直播_P2_成稿.html", _html("P2b", "P2b")),
+            (tmp_path / "老木匠20260810直播_P3_成稿.html", _html("P3b", "P3b")),
+        ]
+        for p, content in parts15 + parts10:
+            p.write_text(content, encoding="utf-8")
+        single = tmp_path / "老木匠20260818直播_成稿.html"
+        single.write_text(_html("single", "single"), encoding="utf-8")
+
+        merged = merge_part_groups(tmp_path)
+
+        assert len(merged) == 2
+        m15 = tmp_path / "老木匠20260815直播_成稿_合并.html"
+        m10 = tmp_path / "老木匠20260810直播_成稿_合并.html"
+        assert m15.exists() and m10.exists()
+        t15 = m15.read_text(encoding="utf-8")
+        assert t15.index("P1 总结") < t15.index("P2 总结")
+        t10 = m10.read_text(encoding="utf-8")
+        assert t10.index("P1b 总结") < t10.index("P2b 总结") < t10.index("P3b 总结")
+        # 分P原件移入备份子目录，单场文件原地不动
+        backup = tmp_path / "_分P原件备份"
+        assert sorted(p.name for p in backup.glob("*.html")) == sorted([
+            "老木匠20260815直播_P1_成稿.html",
+            "老木匠20260815直播_P2_成稿.html",
+            "老木匠20260810直播_P1_成稿.html",
+            "老木匠20260810直播_P2_成稿.html",
+            "老木匠20260810直播_P3_成稿.html",
+        ])
+        assert single.exists()
+        # 分P已移走，重复执行应无新合并（幂等）
+        assert merge_part_groups(tmp_path) == []
+
+    def test_single_part_group_merged_and_moved(self, tmp_path):
+        p1 = tmp_path / "老木匠20260815直播_P1_成稿.html"
+        p1.write_text(_html("P1", "P1"), encoding="utf-8")
+
+        merged = merge_part_groups(tmp_path)
+
+        assert len(merged) == 1
+        assert (tmp_path / "老木匠20260815直播_成稿_合并.html").exists()
+        assert not p1.exists()
+        assert (tmp_path / "_分P原件备份" / "老木匠20260815直播_P1_成稿.html").exists()
+
+    def test_no_parts_returns_empty(self, tmp_path):
+        (tmp_path / "老木匠20260818直播_成稿.html").write_text(
+            _html("single", "single"), encoding="utf-8"
+        )
+
+        assert merge_part_groups(tmp_path) == []
+        assert not (tmp_path / "_分P原件备份").exists()

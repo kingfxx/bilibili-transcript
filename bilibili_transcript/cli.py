@@ -213,8 +213,53 @@ def run_merge_html(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# merge-parts subcommand: safely merge *_P{N} part groups in a mixed directory
+# ---------------------------------------------------------------------------
+
+def run_merge_parts(args: argparse.Namespace) -> int:
+    from bilibili_transcript.merge_html import merge_part_groups
+
+    directory = Path(args.directory)
+    if not directory.is_dir():
+        logger.error("Not a directory: %s", directory)
+        return 1
+    try:
+        merged = merge_part_groups(directory)
+    except Exception as e:
+        logger.error("%s", e)
+        return 1
+    if not merged:
+        logger.info("没有分P文件，跳过合并")
+    else:
+        for m in merged:
+            logger.info("Wrote %s", m)
+        logger.info("分P原件已移入 _分P原件备份 子目录")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # export-html subcommand (formerly tools/export_morandi_html.py)
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# index-html subcommand: generate an index.html overview (总目) for a directory
+# ---------------------------------------------------------------------------
+
+def run_index_html(args: argparse.Namespace) -> int:
+    from bilibili_transcript.index_html import build_index_html
+
+    directory = Path(args.directory)
+    if not directory.is_dir():
+        logger.error("Not a directory: %s", directory)
+        return 1
+    try:
+        out = build_index_html(directory, directory / "index.html")
+    except Exception as e:
+        logger.error("%s", e)
+        return 1
+    logger.info("Wrote %s", out)
+    return 0
+
 
 def run_export_html(args: argparse.Namespace) -> int:
     from bilibili_transcript.export_html import export_morandi_html
@@ -266,6 +311,14 @@ def build_parser() -> argparse.ArgumentParser:
     # merge-html subcommand
     m = sub.add_parser("merge-html", help="Merge Morandi HTML files (P1/P2/P3) into one")
     m.add_argument("inputs", nargs="+", help="Path(s) to *_成稿.html, or a directory containing them")
+
+    # merge-parts subcommand: 安全合并混装目录里的 *_P{N} 分P组
+    mp = sub.add_parser("merge-parts", help="Merge *_P{N}[_成稿].html part groups in a directory")
+    mp.add_argument("directory", help="Directory containing part HTML files")
+
+    # index-html subcommand
+    idx = sub.add_parser("index-html", help="Generate an index.html overview for a directory of Morandi HTMLs")
+    idx.add_argument("directory", help="Directory containing *_成稿.html files")
 
     return root
 
@@ -319,6 +372,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             return run_export_html(args)
         if args.command == "merge-html":
             return run_merge_html(args)
+        if args.command == "merge-parts":
+            return run_merge_parts(args)
+        if args.command == "index-html":
+            return run_index_html(args)
         return run_pipeline(args)
     except KeyboardInterrupt:
         logger.error("Interrupted")
