@@ -197,6 +197,22 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# merge-html subcommand: merge multiple Morandi HTML files (P1/P2/P3) into one
+# ---------------------------------------------------------------------------
+
+def run_merge_html(args: argparse.Namespace) -> int:
+    from bilibili_transcript.merge_html import merge_html_paths
+
+    try:
+        out = merge_html_paths(args.inputs)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("%s", e)
+        return 1
+    logger.info("Wrote %s", out)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # export-html subcommand (formerly tools/export_morandi_html.py)
 # ---------------------------------------------------------------------------
 
@@ -246,6 +262,10 @@ def build_parser() -> argparse.ArgumentParser:
     h = sub.add_parser("export-html", help="Convert 成稿.md to Morandi HTML")
     h.add_argument("input", help="Path to *_transcript_成稿.md or a directory containing one")
     h.add_argument("--no-open", action="store_true", help="Don't auto-open in browser")
+
+    # merge-html subcommand
+    m = sub.add_parser("merge-html", help="Merge Morandi HTML files (P1/P2/P3) into one")
+    m.add_argument("inputs", nargs="+", help="Path(s) to *_成稿.html, or a directory containing them")
 
     return root
 
@@ -297,6 +317,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         if args.command == "export-html":
             return run_export_html(args)
+        if args.command == "merge-html":
+            return run_merge_html(args)
         return run_pipeline(args)
     except KeyboardInterrupt:
         logger.error("Interrupted")
