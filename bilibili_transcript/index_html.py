@@ -24,8 +24,9 @@ _H3_RE = re.compile(r"<h3>(.*?)</h3>", re.DOTALL)
 _P_RE = re.compile(r"<p>(.*?)</p>", re.DOTALL)
 _STRONG_RE = re.compile(r"<strong>.*?</strong>", re.DOTALL)
 # 每个 summary-card 的内容：到下一个 section / 下一个 summary-card / 文末为止
+# （新版 HTML 的 summary-card 带 id="summary"，section 带 id="sec-N"，需前缀匹配）
 _CARD_RE = re.compile(
-    r'<div class="summary-card">(.*?)(?=<div class="section">|<div class="summary-card">|$)',
+    r'<div class="summary-card"[^>]*>(.*?)(?=<div class="section"|<div class="summary-card"|$)',
     re.DOTALL,
 )
 

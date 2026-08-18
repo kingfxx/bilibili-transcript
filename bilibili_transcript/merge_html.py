@@ -2,6 +2,8 @@
 
 Keeps a single <head>/<style> skeleton, concatenates each file's
 ``<div class="container">`` block in order, with a divider label between parts.
+The merged file keeps the left-side TOC: every part's anchors are prefixed
+(``p1-sec-1``, ``p2-sec-1`` …) so section ids never collide across parts.
 """
 
 from __future__ import annotations
@@ -22,17 +24,63 @@ _DIVIDER_CSS = """
     font-size: 14px;
     letter-spacing: 0.3em;
     padding: 14px 0 6px;
+  }
+  .toc-part {
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    color: var(--accent-1);
+    font-weight: 600;
+    margin: 14px 6px 4px;
+    text-transform: uppercase;
   }"""
 
 # 分P文件：老木匠20260815直播_P1_成稿.html（也兼容 老木匠20260815直播_P1.html）
 _PART_FILE_RE = re.compile(r"^(.*)_P(\d+)(_成稿)?\.html$")
 
+# 目录条目：<a class="toc-item[ toc-summary]" href="#summary|#sec-N">...</a>
+_TOC_ITEM_RE = re.compile(
+    r'<a class="toc-item[^"]*" href="#(summary|sec-\d+)">'
+    r'<span class="toc-num">(.*?)</span>(.*?)</a>',
+    re.DOTALL,
+)
+
 
 def _extract_container(text: str) -> str:
-    start = text.index('<div class="container">')
+    start = text.index('<div class="container"')
     end = text.index("</body>")
     chunk = text[start:end]
     return chunk[: chunk.rindex("</div>") + len("</div>")]
+
+
+def _prefix_container(container: str, part_idx: int) -> str:
+    """Prefix section/summary anchors inside one part's container so that
+    merged files never have colliding ids (sec-1 in P1 vs sec-1 in P2)."""
+    c = re.sub(r'id="sec-(\d+)"', r'id="p{0}-sec-\1"'.format(part_idx), container)
+    c = re.sub(r'id="summary"', r'id="p{0}-summary"'.format(part_idx), c)
+    if part_idx > 1:
+        c = re.sub(r'id="top"', "", c)  # 只保留第一部分 #top 回顶锚点
+    return c
+
+
+def _collect_toc_entries(text: str, part_idx: int) -> List[str]:
+    """Re-emit the part's TOC items with prefixed hrefs for the merged nav."""
+    entries: List[str] = []
+    m = re.search(r'<nav class="toc">(.*?)</nav>', text, re.DOTALL)
+    if not m:
+        return entries
+    for href, num, label in _TOC_ITEM_RE.findall(m.group(1)):
+        if href == "summary":
+            entries.append(
+                '      <a class="toc-item toc-summary" href="#p{0}-summary">'
+                '<span class="toc-num">✦</span>第 {0} 部分 · 全文总结</a>'.format(part_idx)
+            )
+        else:
+            n = href.split("-")[1]
+            entries.append(
+                '      <a class="toc-item" href="#p{0}-sec-{1}">'
+                '<span class="toc-num">{0}.{1}</span>{2}</a>'.format(part_idx, n, label)
+            )
+    return entries
 
 
 def merge_morandi_html(html_paths: Sequence[Path], out_path: Path) -> Path:
@@ -41,12 +89,27 @@ def merge_morandi_html(html_paths: Sequence[Path], out_path: Path) -> Path:
     if not texts:
         raise ValueError("No HTML files to merge")
 
-    containers = [_extract_container(t) for t in texts]
+    containers = [_prefix_container(_extract_container(t), i + 1) for i, t in enumerate(texts)]
 
     head = texts[0][: texts[0].index("</head>")]
     head = head.replace("</style>", _DIVIDER_CSS + "\n  </style>") + "</head>"
 
-    lines = [head, "<body>"]
+    toc_entries: List[str] = []
+    for i, t in enumerate(texts, 1):
+        toc_entries.append(f'      <div class="toc-part">第 {i} 部分</div>')
+        toc_entries.extend(_collect_toc_entries(t, i))
+
+    lines = [
+        head,
+        "<body>",
+        '<nav class="toc">',
+        '  <div class="toc-head">',
+        '    <span class="toc-title">目录</span>',
+        '    <a class="toc-top" href="#top">回到顶部 ↑</a>',
+        "  </div>",
+    ]
+    lines.extend(toc_entries)
+    lines.append("</nav>")
     for i, c in enumerate(containers):
         if i > 0:
             lines.append('<hr class="part-divider">')

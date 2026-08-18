@@ -126,7 +126,7 @@ def _build_html(
         tt = f'<span class="time-tag">⏱ {html.escape(s["time"])}</span>' if s["time"] else ""
         ph = "".join(f"<p>{_inline_md(p)}</p>" for p in s["paras"])
         blocks.append(
-            f"""  <div class="section">
+            f"""  <div class="section" id="sec-{idx}">
     <div class="section-header">
       <div class="section-number">{idx}</div>
       <h3>{html.escape(s["title"])}</h3>
@@ -139,6 +139,13 @@ def _build_html(
   </div>"""
         )
 
+    toc_items = [f'      <a class="toc-item toc-summary" href="#summary"><span class="toc-num">✦</span>全文总结</a>']
+    for idx, s in enumerate(sections, 1):
+        toc_items.append(
+            f'      <a class="toc-item" href="#sec-{idx}"><span class="toc-num">{idx}</span>{html.escape(s["title"])}</a>'
+        )
+    toc_html = "\n".join(toc_items)
+
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -148,12 +155,19 @@ def _build_html(
 {style}
 </head>
 <body>
-<div class="container">
+<nav class="toc">
+  <div class="toc-head">
+    <span class="toc-title">目录</span>
+    <a class="toc-top" href="#top">回到顶部 ↑</a>
+  </div>
+{toc_html}
+</nav>
+<div class="container" id="top">
   <header>
     <h1>{html.escape(title)}</h1>
     <div class="subtitle">{html.escape(subtitle)}</div>
   </header>
-  <div class="summary-card">
+  <div class="summary-card" id="summary">
     <h2>全文总结</h2>
 {sum_ps}
 {note_html}

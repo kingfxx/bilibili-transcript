@@ -135,3 +135,53 @@ class TestMergePartGroups:
 
         assert merge_part_groups(tmp_path) == []
         assert not (tmp_path / "_分P原件备份").exists()
+
+
+_TOC_HTML = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{t}</title>
+<style>
+  .container {{ max-width: 780px; }}
+</style>
+</head>
+<body>
+<nav class="toc">
+  <div class="toc-head"><span class="toc-title">目录</span></div>
+  <a class="toc-item toc-summary" href="#summary"><span class="toc-num">✦</span>全文总结</a>
+  <a class="toc-item" href="#sec-1"><span class="toc-num">1</span>第一小节</a>
+  <a class="toc-item" href="#sec-2"><span class="toc-num">2</span>第二小节</a>
+</nav>
+<div class="container" id="top">
+  <div class="summary-card" id="summary"><h2>全文总结</h2><p>{cid} 总结</p></div>
+  <div class="section" id="sec-1"><h3>第一小节</h3><p>{cid} 正文一</p></div>
+  <div class="section" id="sec-2"><h3>第二小节</h3><p>{cid} 正文二</p></div>
+</div>
+</body>
+</html>"""
+
+
+class TestMergeMorandiHtmlWithToc:
+    def test_merged_keeps_toc_with_prefixed_anchors(self, tmp_path):
+        p1 = tmp_path / "P1.html"
+        p2 = tmp_path / "P2.html"
+        p1.write_text(_TOC_HTML.format(t="P1", cid="P1"), encoding="utf-8")
+        p2.write_text(_TOC_HTML.format(t="P2", cid="P2"), encoding="utf-8")
+        out = tmp_path / "merged.html"
+
+        merge_morandi_html([p1, p2], out)
+
+        text = out.read_text(encoding="utf-8")
+        # 合并文件保留左侧目录
+        assert '<nav class="toc">' in text
+        # 分P目录条目带前缀锚点
+        assert 'href="#p1-sec-1"' in text
+        assert 'href="#p2-sec-1"' in text
+        assert 'href="#p1-summary"' in text
+        # 正文锚点已加前缀且不冲突
+        assert 'id="p1-sec-1"' in text and 'id="p2-sec-1"' in text
+        # 第二部分的 #top 被移除，避免重复锚点
+        assert text.count('id="top"') == 1
+        # 两段正文都在且顺序正确
+        assert text.index("P1 正文一") < text.index("P2 正文一")

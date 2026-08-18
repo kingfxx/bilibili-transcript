@@ -31,7 +31,70 @@
     color: var(--text);
     line-height: 1.85;
     font-size: 16px;
+    padding-left: 240px; /* 为左侧固定目录让位 */
   }
+
+  /* ---------- 左侧固定目录 ---------- */
+  .toc {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 240px;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    padding: 32px 20px;
+    overflow-y: auto;
+    z-index: 10;
+  }
+
+  .toc-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .toc-title {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent-1);
+    font-weight: 600;
+  }
+
+  .toc-top {
+    font-size: 0.72rem;
+    color: var(--text-light);
+    text-decoration: none;
+  }
+  .toc-top:hover { color: var(--heading); }
+
+  .toc-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 6px;
+    margin-bottom: 2px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text);
+    text-decoration: none;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .toc-item:hover { background: var(--quote-bg); color: var(--heading); }
+
+  .toc-num {
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    color: var(--text-light);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .toc-item.toc-summary { font-weight: 600; color: var(--heading); }
 
   .container {
     max-width: 780px;
@@ -100,7 +163,8 @@
     line-height: 1.75;
   }
 
-  .section { margin-bottom: 32px; }
+  .section { margin-bottom: 32px; scroll-margin-top: 24px; }
+  .summary-card { scroll-margin-top: 24px; }
 
   .section-header {
     display: flex;
@@ -209,7 +273,9 @@
     letter-spacing: 0.5px;
   }
 
-  @media (max-width: 600px) {
+  @media (max-width: 900px) {
+    body { padding-left: 0; }
+    .toc { display: none; }
     .container { padding: 24px 16px 60px; }
     header { padding: 40px 0 28px; }
     header h1 { font-size: 1.45rem; }
@@ -219,21 +285,33 @@
 </style>
 </head>
 <body>
-<div class="container">
+<!-- 左侧固定目录：条目为 <a href="#sec-编号">，编号与正文 .section 的 id 对应 -->
+<nav class="toc">
+  <div class="toc-head">
+    <span class="toc-title">目录</span>
+    <a class="toc-top" href="#top">回到顶部 ↑</a>
+  </div>
+  <a class="toc-item toc-summary" href="#summary"><span class="toc-num">✦</span>全文总结</a>
+  <a class="toc-item" href="#sec-1"><span class="toc-num">1</span>{{章节标题}}</a>
+  <a class="toc-item" href="#sec-2"><span class="toc-num">2</span>{{章节标题}}</a>
+  <!-- 按需复制 .toc-item，编号递增，与 .section 对应 -->
+</nav>
+
+<div class="container" id="top">
 
   <header>
     <h1>{{主标题}}</h1>
     <div class="subtitle">{{副标题 / 来源说明}}</div>
   </header>
 
-  <div class="summary-card">
+  <div class="summary-card" id="summary">
     <h2>全文总结</h2>
     <p>{{总结正文，用 strong 标出关键词}}</p>
     <div class="note">{{可选备注}}</div>
   </div>
 
-  <!-- 章节：按需复制 .section，编号递增 -->
-  <div class="section">
+  <!-- 章节：按需复制 .section，编号递增；id="sec-编号" 供左侧目录锚点跳转 -->
+  <div class="section" id="sec-1">
     <div class="section-header">
       <div class="section-number">1</div>
       <h3>{{章节标题}}</h3>

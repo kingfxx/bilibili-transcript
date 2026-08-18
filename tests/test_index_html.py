@@ -112,6 +112,66 @@ class TestParseTranscriptHtml:
         ]
         assert len(parsed["section_titles"]) == 15
 
+    def test_new_format_with_id_anchors_still_parses(self, tmp_path):
+        """新版 HTML 的 summary-card/section 带 id 锚点（id="summary"、id="sec-1"），
+        解析器需兼容带属性的开标签。"""
+        p = tmp_path / "老木匠20260820直播_成稿.html"
+        body = [
+            HEAD.format(t="老木匠20260820直播"),
+            "  <header>",
+            "    <h1>老木匠20260820直播</h1>",
+            '    <div class="subtitle">BV1TEST2026 · 视频转写</div>',
+            "  </header>",
+            '  <div class="summary-card" id="summary">',
+            "    <h2>全文总结</h2>",
+            "    <p>新版导语段落</p>",
+            "    <p><strong>重点</strong>内容</p>",
+            "  </div>",
+            '  <div class="section" id="sec-1">',
+            '    <div class="section-header">',
+            '      <div class="section-number">1</div>',
+            "      <h3>新版小节一</h3>",
+            "    </div>",
+            '    <span class="time-tag">⏱ 00:00–01:00</span>',
+            "  </div>",
+            '  <div class="section" id="sec-2">',
+            "    <h3>新版小节二</h3>",
+            "  </div>",
+            FOOT,
+        ]
+        p.write_text("\n".join(body), encoding="utf-8")
+
+        parsed = parse_transcript_html(p)
+
+        assert parsed["title"] == "老木匠20260820直播"
+        assert parsed["bvid"] == "BV1TEST2026"
+        assert [x["html"] for x in parsed["summary_paras"]] == [
+            "新版导语段落",
+            "<strong>重点</strong>内容",
+        ]
+        assert parsed["section_titles"] == ["新版小节一", "新版小节二"]
+
+    def test_new_format_merged_with_prefixed_anchors(self, tmp_path):
+        """新版合并 HTML：summary-card/section 带 pN- 前缀锚点，仍需全部收集。"""
+        p = tmp_path / "老木匠20260821直播_成稿_合并.html"
+        body = [
+            HEAD.format(t="老木匠20260821直播 · 第1部分"),
+            "  <header>",
+            "    <h1>老木匠20260821直播 · 第1部分</h1>",
+            '    <div class="subtitle">BV1TEST2027 · 视频转写</div>',
+            "  </header>",
+        ]
+        for part in (1, 2):
+            body.append(f'  <div class="summary-card" id="p{part}-summary">\n    <h2>全文总结</h2>\n    <p>P{part}总结</p>\n  </div>')
+            body.append(f'  <div class="section" id="p{part}-sec-1"><h3>P{part}小节</h3></div>')
+        body.append(FOOT)
+        p.write_text("\n".join(body), encoding="utf-8")
+
+        parsed = parse_transcript_html(p)
+
+        assert [x["html"] for x in parsed["summary_paras"]] == ["P1总结", "P2总结"]
+        assert parsed["section_titles"] == ["P1小节", "P2小节"]
+
 
 class TestBuildIndexHtml:
     def test_sorts_descending_and_counts_cards(self, tmp_path):
