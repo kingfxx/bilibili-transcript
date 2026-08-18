@@ -144,6 +144,6 @@ def write_eval_markdown_from_json(
     )
 
     slug = sanitize_filename_title(title)
-    out = out_path or (json_path.parent / f"{slug}_{video_id}_transcript_成稿.md")
+    out = out_path or (json_path.parent / f"{slug}_成稿.md")
     out.write_text(md, encoding="utf-8")
     return out

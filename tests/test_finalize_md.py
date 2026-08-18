@@ -58,3 +58,21 @@ class TestWriteEvalMarkdown:
             assert "# Test Video Title" in content
             assert "## 全文总结" in content
             assert "### 1.1" in content
+
+    def test_output_filename_is_title_only(self):
+        """文件名精简：{标题}_成稿.md，不含 video_id 与 transcript。"""
+        segs = [_seg(i, f"text{i}") for i in range(10)]
+        data = {
+            "video_id": "BV_test12345",
+            "bvid": "BV_test12345",
+            "title": "老木匠20260816直播",
+            "text": "".join(s["text"] for s in segs),
+            "segments": segs,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            json_path = Path(tmp) / "BV_test12345_transcript.json"
+            json_path.write_text(json.dumps(data), encoding="utf-8")
+            out = write_eval_markdown_from_json(json_path)
+            assert out.name == "老木匠20260816直播_成稿.md"
+            assert "BV_test12345" not in out.name
+            assert "transcript" not in out.name
