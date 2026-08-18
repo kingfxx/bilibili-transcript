@@ -189,7 +189,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     logger.info("Wrote %s (time-chunked draft)", md_path)
 
     try:
-        ev_path = write_eval_markdown_from_json(json_path)
+        ev_path = write_eval_markdown_from_json(json_path, num_buckets=args.buckets)
         logger.info("Wrote %s (structured draft for review)", ev_path)
     except Exception as e:
         logger.warning("Skipped eval markdown: %s", e)
@@ -349,6 +349,8 @@ def _add_transcript_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--language", default="zh", help="Whisper language code (default: zh)")
     p.add_argument("--no-vad", action="store_true", help="Disable VAD filter (try for music/BGM)")
     p.add_argument("--json-only", action="store_true", help="Output JSON only, skip Markdown")
+    p.add_argument("--buckets", type=int, default=None, metavar="N",
+                   help="Override 成稿 section count (default: auto 3-8 by video length)")
     p.add_argument("--chunk-span", type=float, default=300.0, metavar="SEC", help="Draft section span in seconds (default: 300)")
 
 

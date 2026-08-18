@@ -12,6 +12,7 @@ must be done by the AI assistant, not by this script.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -20,6 +21,9 @@ from bilibili_transcript.utils import fmt_ts
 
 PRESETS_DIR = Path(__file__).parent / "presets"
 NUM_BUCKETS = 5
+MIN_BUCKETS = 3
+MAX_BUCKETS = 8
+TARGET_BUCKET_SECONDS = 25 * 60  # 每桶目标时长：25 分钟
 
 
 def load_preset(video_id: str) -> Optional[Dict[str, Any]]:
@@ -43,6 +47,22 @@ def split_segments_into_n_buckets(
     for i in range(0, len(segs), per):
         buckets.append(segs[i : i + per])
     return buckets[:n] if len(buckets) > n else buckets
+
+
+def resolve_num_buckets(segments: Sequence[Dict[str, Any]]) -> int:
+    """按视频总时长自适应分桶数：clamp(ceil(总时长 / 25min), MIN, MAX)。
+
+    短视频（<~75 分钟）取 3 桶，长直播（>~200 分钟）封顶 8 桶，
+    典型 2 小时视频约 5 桶（与旧的固定 5 桶行为一致）。
+    """
+    segs = list(segments)
+    if not segs:
+        return NUM_BUCKETS
+    total_seconds = float(segs[-1].get("end", 0) or 0)
+    if total_seconds <= 0:
+        return NUM_BUCKETS
+    n = math.ceil(total_seconds / TARGET_BUCKET_SECONDS)
+    return max(MIN_BUCKETS, min(MAX_BUCKETS, n))
 
 
 def build_eval_markdown(
@@ -113,8 +133,12 @@ def _resolve_content(
 def write_eval_markdown_from_json(
     json_path: Path,
     out_path: Optional[Path] = None,
+    num_buckets: Optional[int] = None,
 ) -> Path:
-    """Generate structured draft 成稿.md from transcript JSON."""
+    """Generate structured draft 成稿.md from transcript JSON.
+
+    num_buckets: 显式分桶数；None 时按视频时长自适应（3–8 桶）。
+    """
     data = json.loads(json_path.read_text(encoding="utf-8"))
     title = data.get("title") or data.get("bvid") or "标题"
     segs = data.get("segments") or []
@@ -122,7 +146,8 @@ def write_eval_markdown_from_json(
         raise ValueError("No segments in JSON")
 
     video_id = data.get("video_id") or data.get("bvid") or "out"
-    buckets = split_segments_into_n_buckets(segs, NUM_BUCKETS)
+    n = num_buckets if (num_buckets and num_buckets > 0) else resolve_num_buckets(segs)
+    buckets = split_segments_into_n_buckets(segs, n)
     full_text = data.get("text") or ""
 
     headings, blurbs, full_summary = _resolve_content(video_id, len(buckets), full_text)
