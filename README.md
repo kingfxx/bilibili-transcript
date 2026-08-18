@@ -132,3 +132,7 @@ class YouTubeProvider(TranscriptProvider):
 - `case_outputs/BV1ijE4zwEHP/` — 英文 ASR
 - `case_outputs/BV1728bzzEwA/` — 多 P 视频
 
+## 致谢
+
+本项目基于 [znygithub/bilibili-transcript](https://github.com/znygithub/bilibili-transcript) 修改而来（新增 cookie 文件注入登录态等改动），遵循 MIT 许可，详见 [LICENSE](LICENSE)。
+
