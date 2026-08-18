@@ -186,7 +186,7 @@ class TestBuildIndexHtml:
         build_index_html(tmp_path, out)
 
         text = out.read_text(encoding="utf-8")
-        assert text.count('<article class="index-card">') == 3
+        assert text.count('<article class="index-card"') == 3
         i15 = text.index("老木匠20260815直播_成稿.html")
         i10 = text.index("老木匠20260810直播_成稿.html")
         i18 = text.index("老木匠20260718直播_成稿.html")
@@ -201,9 +201,42 @@ class TestBuildIndexHtml:
         build_index_html(tmp_path, out)
 
         text = out.read_text(encoding="utf-8")
-        assert text.count('<article class="index-card">') == 1
+        assert text.count('<article class="index-card"') == 1
         assert "old" not in text
         assert 'href="老木匠20260818直播_成稿.html"' in text
+
+    def test_has_left_date_toc_with_anchors(self, tmp_path):
+        """index 左侧应有日期目录：按月份分组可折叠、组内每行 4 个、指向卡片锚点、无平滑滚动。"""
+        _write_transcript(tmp_path, "20260718", title="老木匠20260718直播",
+                          bvid="BV1", summary_paras=["旧场导语"], section_titles=["A"])
+        _write_transcript(tmp_path, "20260720", title="老木匠20260720直播",
+                          bvid="BV2", summary_paras=["中场导语"], section_titles=["B"])
+        _write_transcript(tmp_path, "20260815", title="老木匠20260815直播",
+                          bvid="BV3", summary_paras=["合并场导语"], section_titles=["C"])
+
+        out = tmp_path / "index.html"
+        build_index_html(tmp_path, out)
+
+        text = out.read_text(encoding="utf-8")
+        # 左侧目录 nav + 月份分组
+        assert '<nav class="toc">' in text
+        assert text.count('<details class="toc-month"') >= 1
+        assert "2026年8月" in text and "2026年7月" in text
+        assert '(2)' in text and '(1)' in text  # 月份场次计数
+        # 最新月份默认展开，其余收起
+        assert '<details class="toc-month" open>' in text
+        # 组内每行 4 个的 grid 容器
+        assert 'class="toc-dates"' in text
+        assert "grid-template-columns: repeat(4, 1fr)" in text
+        # 日期条目 + 对应卡片锚点
+        assert 'href="#card-20260718"' in text
+        assert 'href="#card-20260815"' in text
+        assert 'id="card-20260718"' in text
+        assert 'id="card-20260815"' in text
+        # 日期徽章格式
+        assert "2026-07-18" in text and "2026-08-15" in text
+        # 无平滑滚动（直接跳转）
+        assert "scroll-behavior" not in text
 
     def test_shows_intro_chips_and_details(self, tmp_path):
         _write_transcript(

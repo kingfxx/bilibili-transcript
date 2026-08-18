@@ -113,6 +113,50 @@ INDEX_CSS = """
     border-left: 2px solid var(--border);
     margin-bottom: 8px;
   }
+
+  /* ---------- 总目左侧日期目录 ---------- */
+  .index-card { scroll-margin-top: 24px; }
+
+  .toc-month { margin-bottom: 10px; }
+  .toc-month summary {
+    cursor: pointer;
+    font-size: 0.78rem;
+    color: var(--accent-1);
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    padding: 4px 2px;
+    user-select: none;
+    list-style: none;
+  }
+  .toc-month summary::-webkit-details-marker { display: none; }
+  .toc-month summary::before { content: "▸ "; }
+  .toc-month[open] summary::before { content: "▾ "; }
+  .toc-month summary:hover { color: var(--heading); }
+  .toc-month[open] summary { margin-bottom: 8px; }
+  .toc-month .toc-count { color: var(--text-light); font-weight: 400; }
+
+  .toc-dates {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .toc-date {
+    display: block;
+    text-align: center;
+    font-size: 0.7rem;
+    background: var(--tag-bg);
+    color: var(--text-light);
+    padding: 4px 2px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-family: "SF Mono", "Fira Code", monospace;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .toc-date:hover {
+    background: var(--highlight);
+    color: var(--heading);
+  }
 """
 
 
@@ -208,6 +252,7 @@ def _render_card(entry: Dict[str, Any]) -> str:
     filename = entry["path"].name
     title = entry["title"] or filename
     badge = _format_badge(entry["date"])
+    anchor = f"card-{entry['date']}" if entry["date"] else f"card-{_slugify(filename)}"
 
     intro_html = ""
     details_html = ""
@@ -231,7 +276,7 @@ def _render_card(entry: Dict[str, Any]) -> str:
         )
         chips = f'    <div class="chips">{chip_html}</div>'
 
-    return f"""    <article class="index-card">
+    return f"""    <article class="index-card" id="{html.escape(anchor)}">
       <div class="card-head">
         <span class="date-badge">{badge}</span>
         <a class="card-title" href="{html.escape(filename)}">{html.escape(title)}</a>
@@ -240,6 +285,12 @@ def _render_card(entry: Dict[str, Any]) -> str:
 {chips}
 {details_html}
     </article>"""
+
+
+def _slugify(name: str) -> str:
+    import re as _re
+    s = _re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "-", name).strip("-")
+    return s or "entry"
 
 
 def build_index_html(directory: Path, out_path: Path) -> Path:
@@ -262,6 +313,31 @@ def build_index_html(directory: Path, out_path: Path) -> Path:
     n = len(entries)
     cards = "\n".join(_render_card(e) for e in entries)
 
+    # 左侧固定日期目录：按月份分组（<details> 折叠，最新月份默认展开），
+    # 组内日期横向每行 4 个（grid 4 列），显示 MM-DD，title 悬停给出完整日期。
+    months: Dict[str, List[Dict[str, Any]]] = {}
+    for e in entries:
+        if e["date"]:
+            months.setdefault(e["date"][:6], []).append(e)
+
+    toc_months: List[str] = []
+    for idx, (ym, items) in enumerate(months.items()):
+        month_label = f"{ym[:4]}年{int(ym[4:6])}月"
+        open_attr = " open" if idx == 0 else ""
+        date_links = "".join(
+            f'      <a class="toc-date" href="#card-{html.escape(e["date"])}" '
+            f'title="{html.escape(_format_badge(e["date"]))}">'
+            f'{e["date"][4:6]}-{e["date"][6:8]}</a>'
+            for e in items
+        )
+        toc_months.append(
+            f'  <details class="toc-month"{open_attr}>\n'
+            f'    <summary>{month_label} <span class="toc-count">({len(items)})</span></summary>\n'
+            f'    <div class="toc-dates">\n{date_links}\n    </div>\n'
+            f"  </details>"
+        )
+    toc_html = "\n".join(toc_months)
+
     style = _style_block()
     style = style.replace("</style>", INDEX_CSS + "\n  </style>")
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -275,7 +351,14 @@ def build_index_html(directory: Path, out_path: Path) -> Path:
 {style}
 </head>
 <body>
-<div class="container index-container">
+<nav class="toc">
+  <div class="toc-head">
+    <span class="toc-title">目录</span>
+    <a class="toc-top" href="#top">回到顶部 ↑</a>
+  </div>
+{toc_html}
+</nav>
+<div class="container index-container" id="top">
   <header>
     <h1>老木匠直播回放 · 总目</h1>
     <div class="subtitle">共 {n} 场 · 生成于 {now}</div>
