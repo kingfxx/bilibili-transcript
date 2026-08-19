@@ -111,6 +111,27 @@ def run_pipeline(args: argparse.Namespace) -> int:
     args.cookies_file = resolve_cookies_file(args.cookies_file)
     if args.cookies_file:
         logger.info("使用 Cookie 文件: %s", args.cookies_file)
+        try:
+            from bilibili_transcript.wbi import check_cookies_file_login
+            login = check_cookies_file_login(args.cookies_file)
+            if login is not None:
+                if login.get("ok"):
+                    logger.info("Cookie 登录态有效: %s (mid=%s)", login.get("uname"), login.get("mid"))
+                elif login.get("code") == -101:
+                    logger.warning(
+                        "⚠ Cookie 已失效（账号未登录，code=-101）。"
+                        "如需抓取仅登录可见的字幕，请更新 %s："
+                        "在浏览器扩展（EditThisCookie/Cookie-Editor 等）重新导出 B 站 Cookie "
+                        "（JSON 数组或 Netscape 格式）覆盖该文件后重试。",
+                        args.cookies_file,
+                    )
+                else:
+                    logger.warning(
+                        "Cookie 登录态无法确认（接口异常 code=%s），按未登录处理。",
+                        login.get("code"),
+                    )
+        except Exception as e:
+            logger.warning("验证 Cookie 登录态失败: %s", e)
     provider = detect_provider(args.input)
     logger.info("Source: %s", provider.name)
 

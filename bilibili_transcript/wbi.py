@@ -179,6 +179,52 @@ def session_with_cookies_file(bvid: str, cookies_file: Optional[str]) -> request
     return s
 
 
+def verify_cookie_login(session: requests.Session, timeout: float = 15.0) -> Dict[str, Any]:
+    """验证注入 cookie 的 session 是否处于登录态。
+
+    返回 {ok, is_login, uname, mid, code, message}：
+    - ok=True 表示请求成功且 isLogin=True
+    - ok=False 但 code != -101 表示网络/接口异常（无法判定，按匿名处理）
+    - ok=False 且 code == -101 表示 cookie 失效（SESSDATA 过期等）
+    """
+    try:
+        r = session.get(
+            "https://api.bilibili.com/x/web-interface/nav",
+            timeout=timeout,
+        )
+        r.raise_for_status()
+        j = r.json()
+    except Exception as e:
+        logger.warning("验证 Cookie 登录态失败（网络/接口异常）: %s", e)
+        return {"ok": False, "is_login": False, "code": None, "message": str(e)}
+    data = j.get("data") or {}
+    is_login = bool(data.get("isLogin"))
+    result = {
+        "ok": is_login,
+        "is_login": is_login,
+        "uname": data.get("uname"),
+        "mid": data.get("mid"),
+        "code": j.get("code"),
+        "message": j.get("message"),
+    }
+    return result
+
+
+def check_cookies_file_login(cookies_file: Optional[str], bvid: str = "") -> Optional[Dict[str, Any]]:
+    """便捷入口：加载 cookie 文件并用独立 session 验证登录态。
+
+    返回 verify_cookie_login 的字典；cookie 文件缺失/为空时返回 None（跳过验证）。
+    """
+    if not cookies_file or not str(cookies_file).strip():
+        return None
+    jar = load_cookies_file(str(cookies_file))
+    if not jar:
+        return None
+    s = session_with_headers(bvid)
+    s.cookies.update(jar)
+    return verify_cookie_login(s)
+
+
 def to_netscape_cookie_file(cookies_file: str) -> Optional[str]:
     """
     把 JSON 数组 / Netscape 格式的 cookie 文件统一转成 Netscape 临时文件，

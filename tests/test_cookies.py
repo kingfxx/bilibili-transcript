@@ -9,6 +9,8 @@ from bilibili_transcript.wbi import (
     load_cookies_file,
     session_with_cookies_file,
     to_netscape_cookie_file,
+    verify_cookie_login,
+    check_cookies_file_login,
 )
 
 
@@ -98,6 +100,63 @@ class TestDefaultCookiesFile:
 
     def test_returns_none_when_default_missing(self, tmp_path):
         assert default_cookies_file(tmp_path) is None
+
+
+class TestVerifyCookieLogin:
+    """verify_cookie_login / check_cookies_file_login：登录态判定。"""
+
+    def test_verify_ok_when_logged_in(self, monkeypatch):
+        class FakeResp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "code": 0,
+                    "message": "0",
+                    "data": {"isLogin": True, "uname": "老木匠", "mid": 12345},
+                }
+
+        class FakeSession:
+            def get(self, url, timeout=15.0):
+                return FakeResp()
+
+        r = verify_cookie_login(FakeSession())
+        assert r["ok"] is True
+        assert r["is_login"] is True
+        assert r["uname"] == "老木匠"
+        assert r["mid"] == 12345
+
+    def test_verify_expired_when_not_logged_in(self, monkeypatch):
+        class FakeResp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"code": -101, "message": "账号未登录", "data": {"isLogin": False}}
+
+        class FakeSession:
+            def get(self, url, timeout=15.0):
+                return FakeResp()
+
+        r = verify_cookie_login(FakeSession())
+        assert r["ok"] is False
+        assert r["is_login"] is False
+        assert r["code"] == -101
+
+    def test_verify_network_error_not_treated_as_expired(self, monkeypatch):
+        class FakeSession:
+            def get(self, url, timeout=15.0):
+                raise RuntimeError("timeout")
+
+        r = verify_cookie_login(FakeSession())
+        assert r["ok"] is False
+        assert r["code"] is None
+
+    def test_check_cookies_file_login_none_when_missing(self, tmp_path):
+        assert check_cookies_file_login(None) is None
+        assert check_cookies_file_login("") is None
+        assert check_cookies_file_login(str(tmp_path / "nope.txt")) is None
 
 
 class TestResolveCookiesFile:
