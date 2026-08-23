@@ -69,6 +69,13 @@ def obtain_part_segments(
     if result is not None:
         return result
 
+    if getattr(args, "no_asr", False):
+        raise RuntimeError(
+            f"Part {part_index} 官方字幕不可用且已禁用音频转写（--no-asr）。"
+            "如需字幕，请确认 bili_cookie.txt 登录态有效、网页上确有 CC 字幕，"
+            "或改用 --ytdlp-subs 尝试 yt-dlp 字幕；如需音频转写请去掉 --no-asr。"
+        )
+
     # ASR fallback
     mp3 = out_dir / f"{meta.video_id}_p{part_index}.mp3"
     if args.skip_download and mp3.exists():
@@ -108,6 +115,9 @@ def resolve_cookies_file(cookies_file: Optional[str], root: Optional[Path] = Non
 
 
 def run_pipeline(args: argparse.Namespace) -> int:
+    if getattr(args, "force_asr", False) and getattr(args, "no_asr", False):
+        logger.error("--force-asr 与 --no-asr 互斥，不能同时使用。")
+        return 2
     args.cookies_file = resolve_cookies_file(args.cookies_file)
     if args.cookies_file:
         logger.info("使用 Cookie 文件: %s", args.cookies_file)
@@ -364,6 +374,8 @@ def _add_transcript_args(p: argparse.ArgumentParser) -> None:
         help="Prefer official subtitles over ASR (default: on)",
     )
     p.add_argument("--force-asr", action="store_true", help="Skip subtitle check, force local ASR")
+    p.add_argument("--no-asr", action="store_true",
+                   help="Disable ASR fallback: fail when official subtitles unavailable (no audio download, no transcription)")
     p.add_argument("--whisper-model", default="medium", help="faster-whisper model (small/medium/large-v3)")
     p.add_argument("--device", default="auto", help="cpu / cuda / auto")
     p.add_argument("--compute-type", default="default", help="default / int8 / float16 / float32")
@@ -403,6 +415,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     except KeyboardInterrupt:
         logger.error("Interrupted")
         return 130
+    except RuntimeError as e:
+        logger.error("%s", e)
+        return 3
     except Exception as e:
         logger.exception("%s", e)
         return 1

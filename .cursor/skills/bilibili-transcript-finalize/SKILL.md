@@ -1,90 +1,90 @@
 ---
 name: bilibili-transcript-finalize
 description: >-
-  Video URL → transcript pipeline → 成稿.md → 成稿.html (Morandi).
-  Always generate HTML unless user explicitly opts out.
-  macOS: grant Full Disk Access to Terminal app if using --cookies-from-browser.
+  Use when 用户要求「分析 / 整理 / 转写 B 站视频」并给出 BV 号或 bilibili 链接（bilibili.com、b23.tv）。
+  输入 BV 号后自动完成全流程：纯脚本抓官方字幕（禁用音频转写）→ LLM 润色成稿 → 导出 HTML。
+  也适用于已有 *_transcript.json 或 *_成稿.md 需要补后续阶段时。
 ---
 
-# 视频转写成稿流程
+# B 站视频一键分析全流程
 
-> 所有路径相对仓库根目录。本流程适用于任何支持读写文件的 AI 编程助手（Cursor、Claude Code 等）。
+> 所有路径相对仓库根目录 `E:\07_git\01_python\02_personal\bilibili-transcript`。
+> 适用于任何支持读写文件、执行 shell 的 AI 编程助手（Claude Code、Cursor 等）。
 
-## 三阶段流程
+## 三阶段分工（LLM 只用于最后一步）
 
-| 阶段 | 执行者 | 产出 |
-|------|--------|------|
-| **① 脚本** | `python -m bilibili_transcript` | `*_transcript.json` + 可选草稿 `.md` |
-| **② AI 助手** | 你（读 JSON → 润色成稿） | `*_transcript_成稿.md` |
-| **③ 导出 HTML** | `python -m bilibili_transcript export-html` 或你手写 | `*_transcript_成稿.html` |
+| 阶段 | 执行者 | 产出 | LLM？ |
+|------|--------|------|-------|
+| **① 字幕导出** | 纯脚本 `python -m bilibili_transcript` | `{BV号}_transcript.json` + 草稿 `.md` | **否**（禁止） |
+| **② 成稿润色** | 你（读 JSON → 分析 → 润色） | `{标题}_成稿.md` | 是 |
+| **③ 导出 HTML** | 纯脚本 `export-html` | `{标题}_成稿.html` | 否 |
+
+**铁律：阶段①和③直接跑脚本，不要用 LLM 做任何读取、总结、转写工作；LLM 只负责阶段②的成稿润色。**
 
 ## 触发条件
 
-1. 用户发来**视频链接**（`bilibili.com`、`b23.tv`、含 `BV` 号）→ 执行 ①②③
-2. 已有 `*_transcript.json` 或 `成稿.md` → 从缺失的阶段开始补
+1. 用户说「分析 / 整理 / 转写 BVxxx」或发 bilibili 链接（`bilibili.com`、`b23.tv`、含 `BV` 号）→ 完整执行 ①②③
+2. 已有 `*_transcript.json` 或 `成稿.md` → 从缺失阶段开始补
 
-## ① 运行脚本
+## ① 字幕导出（纯脚本，必须 --no-asr）
 
 ```bash
-python -m bilibili_transcript "<URL或BV号>" \
-  -o case_outputs/<视频ID> \
-  --cookies-from-browser chrome
+python -m bilibili_transcript transcript "<BV号或链接>" \
+  -o case_outputs/<视频ID> --no-asr
 ```
 
-- 按需加 `--part N`（多 P 视频指定分 P）
-- **不要**加 `--force-asr`（流水线优先拉字幕，只在字幕不可用时才 ASR）
-- 确认 JSON 产出后，检查 `part_sources` 中的 `mode`：
-  - `official_cc` / `ytdlp_subtitle_file` → 字幕，不要重跑 ASR 覆盖
-  - `asr` → 转写，正常
+- **必须加 `--no-asr`**：禁用音频转写兜底。官方字幕不可用时脚本直接报错退出（不下载音频、不跑 faster-whisper），符合"只用导出的字幕"
+- 按需加 `--part N`（多 P 视频指定分 P）；不指定则自动处理所有分 P
+- cookie：自动加载项目根目录 `bili_cookie.txt`（登录态可抓仅登录可见的字幕）
+- 产出后检查 JSON 的 `part_sources[].mode`：
+  - `official_cc` / `ytdlp_subtitle_file` / `srt` → 字幕，正确
+  - 若报错"官方字幕不可用"：先确认网页上该视频确有 CC 字幕且 cookie 有效；可加 `--ytdlp-subs` 再试一次（yt-dlp 字幕仍属字幕路径，允许）；仍失败则如实告知用户，**不要**去掉 --no-asr 私自转写音频
+- 产出物：`{BV号}_transcript.json`（事实源：title、segments[]、part_sources）
 
-### macOS 权限提示
+## ② 成稿 Markdown（LLM 分析 + 润色）
 
-`--cookies-from-browser` 需要在 **系统设置 → 隐私与安全性 → 完全磁盘访问权限** 中授权终端 App。
+基于 `{BV号}_transcript.json` 完成。**文件名不用视频原标题**（可能是"【直播回放】…"等流水账标题），按统一风格命名：
 
-## ② 成稿 Markdown
+```
+{博主名}{YYYYMMDD}直播（{主题关键词}）_成稿.md
+```
 
-基于 `*_transcript.json` 完成以下工作，写入 `*_transcript_成稿.md`：
+- **博主名**：从内容推断（如"老木匠"）
+- **日期**：直播日期 `YYYYMMDD`
+- **主题关键词**：2–3 个核心话题，中文全角括号包裹、顿号分隔
+- 文档内部 `# 标题` 与文件名主体一致（不用视频原标题）
+- 示例：`老木匠20260822直播（风险、房地产、周期股）_成稿.md`、`老木匠20260823直播（美债、美元、国家队）_成稿.md`
 
 ### 文档结构（必须满足）
 
-1. `# {视频标题}`（来自 JSON `title`，不要用纯 ID）
+1. `# {命名风格标题}`（如"老木匠20260823直播（美债、美元、国家队）"，不要用纯 ID）
 2. `## 全文总结` — 详细中文总结：背景、说话人、主线论点、关键数据、结论；可用 **加粗** 突出重点；不编造
-3. `## 1. 完整逐字稿` — 其下 **3–8 个小节** `### 1.1` … `### 1.N`（节数自适应，见下）
+3. `## 1. 完整逐字稿` — 其下 **3–8 个小节** `### 1.1` … `### 1.N`
 4. 小节标题 = **话题短标题**（不要用纯时间段做标题）
 5. 每节开头引用块：首行 `> （时间参考：MM:SS–MM:SS）`，后续 2–4 句摘要
-6. 正文：简体中文；英文口播译中文；专名统一；中文全角标点；按语义分段
-7. 多说话人时可用 `**主持人：**` / `**嘉宾：**` 分行（无法判断时不要编造）
+6. 正文：简体中文；英文口播译中文；专名统一；中文全角标点；按语义分段、去口癖；不虚构观点与数字
+7. 直播/闲聊内容：可按话题合并小节；偏离主题的闲聊可压缩为引用块内一句带过
 
 ### 关键规则
 
-- 脚本产出的 `finalize_md` 只是分桶原文拼接 → **必须覆盖为终稿**
-- 分桶规则：`segments` 按列表顺序均分 N 桶，`N = clamp(ceil(总时长 / 25min), 3, 8)`
-  （同 `resolve_num_buckets` → `split_segments_into_n_buckets(segments, N)`）：
-  - 短视频（< ~75 分钟）取 3 桶；典型 2 小时视频约 5 桶；超长直播（> ~200 分钟）封顶 8 桶
-  - 你可在 3–8 范围内**按话题密度合并/拆分**节数（例如某话题很长就多分一节），
-    但必须保证：每节仍带时间参考、时间轴连续覆盖全文、小节总数在 3–8 之间
-- 不得虚构观点、案例、数字
-
-### 文件名
-
-`{sanitize_filename_title(title)}_{video_id}_transcript_成稿.md`
+- 阶段①产出的脚本草稿（`finalize_md` 分桶拼接）**必须覆盖为终稿**
+- 分桶规则：`N = clamp(ceil(总时长 / 25min), 3, 8)`，可在 3–8 内按话题密度合并/拆分，但每节必须带时间参考、时间轴连续覆盖全文
+- 长直播（>3 小时）：允许 6–8 节，每节对应一个大话题（宏观/房地产/周期股/消费等）
+- AI 字幕音误需按上下文校正（如"卧室"→鲍威尔、"娜子"→纳指），专名统一
+- 关键数据段落注明"均出自原话，未做核实"
 
 ## ③ 导出 HTML
 
-成稿 `.md` 定稿后：
-
 ```bash
-python -m bilibili_transcript export-html path/to/成稿.md
+python -m bilibili_transcript export-html "path/to/xxx_成稿.md"
 ```
 
-或按 `docs/transcript_morandi_html/README.md` + `morandi-template.html` 手写。
-
-- **默认必做**，除非用户明确说只要 Markdown
+- **默认必做**，除非用户明确只要 Markdown
 - 多 P 视频每个 P 各自走完 ②→③
 
 ## 完成后回复
 
 告知用户：
 - `.md` 与 `.html` 的路径
-- `part_sources` 来源（字幕/ASR）
-- HTML 是否已自动打开
+- 字幕来源（`part_sources` 的 mode，应均为字幕）
+- 给 2–3 句内容摘要（体现分析价值）

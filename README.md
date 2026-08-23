@@ -81,6 +81,7 @@ bilibili_transcript/
 | 默认（能抓字幕就不 ASR）   | 无额外参数（自动加载根目录 `bili_cookie.txt`）                 |
 | 登录字幕在网页有、接口无     | `--cookies-file bili_cookie.txt` 或 `--cookies-from-browser chrome` |
 | 强制 ASR           | `--force-asr`                                             |
+| 禁用音频转写（只用字幕） | `--no-asr`（字幕不可用时直接报错，不下载音频）                  |
 | 仅输出 JSON         | `--json-only`                                             |
 | 官方无 CC 时试 yt-dlp | `--ytdlp-subs`                                            |
 | 指定分 P            | `--part N`                                                |
