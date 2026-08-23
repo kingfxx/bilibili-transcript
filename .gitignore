@@ -14,3 +14,12 @@ build/
 # 输出目录与敏感文件
 case_outputs/
 bili_cookie.txt
+
+# DeepSeek harness 本地工具安装产物（非项目依赖）
+node_modules/
+package.json
+package-lock.json
+package.json.bak
+
+# Claude Code 本地配置
+.claude/
