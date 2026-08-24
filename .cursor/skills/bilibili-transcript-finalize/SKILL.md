@@ -53,7 +53,7 @@ python -m bilibili_transcript transcript "<BV号或链接>" \
 
 - **前提：Step 1 已确认 cookie 登录态有效**；cookie 无效必须先提示刷新，不私自转写
 - 默认 GPU（本机 RTX 5070 已配置好，transcribe.py 自动注入 nvidia DLL 路径）；无 GPU 机器去掉 `--device cuda --compute-type float16` 即回落 CPU
-- 模型：medium 已完整缓存（1.5G）；新机器缺模型时若直连 huggingface.co 超时，带代理下载：`HTTPS_PROXY=http://127.0.0.1:10808 HTTP_PROXY=http://127.0.0.1:10808`
+- 模型：默认 large-v3-turbo（已缓存 1.6G，repo 为 mobiuslabsgmbh/faster-whisper-large-v3-turbo）；新机器缺模型时若直连 huggingface.co 超时，带代理下载：`HTTPS_PROXY=http://127.0.0.1:10808 HTTP_PROXY=http://127.0.0.1:10808`
 - 音频已下载过可加 `--skip-download` 复用
 - 耗时：GPU 约 1/20 实时（1 小时音频约 3-5 分钟）；CPU 30-60 分钟，嫌慢可 `--whisper-model small`
 - 产出物：`{BV号}_transcript.json`（事实源：title、segments[]、part_sources，mode 可能为 `asr`）

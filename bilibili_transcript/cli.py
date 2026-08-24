@@ -376,7 +376,7 @@ def _add_transcript_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--force-asr", action="store_true", help="Skip subtitle check, force local ASR")
     p.add_argument("--no-asr", action="store_true",
                    help="Disable ASR fallback: fail when official subtitles unavailable (no audio download, no transcription)")
-    p.add_argument("--whisper-model", default="medium", help="faster-whisper model (small/medium/large-v3)")
+    p.add_argument("--whisper-model", default="large-v3-turbo", help="faster-whisper model (small/medium/large-v3/large-v3-turbo)")
     p.add_argument("--device", default="auto", help="cpu / cuda / auto")
     p.add_argument("--compute-type", default="default", help="default / int8 / float16 / float32")
     p.add_argument("--language", default="zh", help="Whisper language code (default: zh)")
