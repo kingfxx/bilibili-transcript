@@ -2,8 +2,10 @@
 name: bilibili-transcript-finalize
 description: >-
   Use when 用户要求「分析 / 整理 / 转写 B 站视频」并给出 BV 号或 bilibili 链接（bilibili.com、b23.tv）。
-  输入 BV 号后自动完成全流程：纯脚本抓官方字幕（禁用音频转写）→ LLM 润色成稿 → 导出 HTML。
+  输入 BV 号后自动完成全流程：官方字幕优先，确认无字幕且 cookie 有效时 ASR 兜底转录 → LLM 润色成稿 → 导出 HTML。
   也适用于已有 *_transcript.json 或 *_成稿.md 需要补后续阶段时。
+origin: custom
+version: 2.5.0
 ---
 
 # B 站视频一键分析全流程
@@ -16,8 +18,8 @@ description: >-
 | 阶段 | 执行者 | 产出 | LLM？ |
 |------|--------|------|-------|
 | **① 字幕导出** | 纯脚本 `python -m bilibili_transcript` | `{BV号}_transcript.json` + 草稿 `.md` | **否**（禁止） |
-| **② 成稿润色** | 你（读 JSON → 分析 → 润色） | `{标题}_成稿.md` | 是 |
-| **③ 导出 HTML** | 纯脚本 `export-html` | `{标题}_成稿.html` | 否 |
+| **② 成稿润色** | 你（读 JSON → 分析 → 润色） | `{标题}.md` | 是 |
+| **③ 导出 HTML** | 纯脚本 `export-html` | `{标题}.html` | 否 |
 
 **铁律：阶段①和③直接跑脚本，不要用 LLM 做任何读取、总结、转写工作；LLM 只负责阶段②的成稿润色。**
 
@@ -26,38 +28,53 @@ description: >-
 1. 用户说「分析 / 整理 / 转写 BVxxx」或发 bilibili 链接（`bilibili.com`、`b23.tv`、含 `BV` 号）→ 完整执行 ①②③
 2. 已有 `*_transcript.json` 或 `成稿.md` → 从缺失阶段开始补
 
-## ① 字幕导出（纯脚本，必须 --no-asr）
+## ① 字幕导出与 ASR 兜底（纯脚本）
+
+**Step 1：探测官方字幕（带 cookie，快速）**
 
 ```bash
 python -m bilibili_transcript transcript "<BV号或链接>" \
   -o case_outputs/<视频ID> --no-asr
 ```
 
-- **必须加 `--no-asr`**：禁用音频转写兜底。官方字幕不可用时脚本直接报错退出（不下载音频、不跑 faster-whisper），符合"只用导出的字幕"
 - 按需加 `--part N`（多 P 视频指定分 P）；不指定则自动处理所有分 P
-- cookie：自动加载项目根目录 `bili_cookie.txt`（登录态可抓仅登录可见的字幕）
+- cookie：自动加载项目根目录 `bili_cookie.txt`
+- **先看日志确认 cookie 登录态**：出现 `Cookie 登录态有效: xxx (mid=xxx)` → cookie 有效；若提示失效/无法确认（SESSDATA 过期等）→ **先提示用户刷新 bili_cookie.txt，不要走 ASR**
 - 产出后检查 JSON 的 `part_sources[].mode`：
-  - `official_cc` / `ytdlp_subtitle_file` / `srt` → 字幕，正确
-  - 若报错"官方字幕不可用"：先确认网页上该视频确有 CC 字幕且 cookie 有效；可加 `--ytdlp-subs` 再试一次（yt-dlp 字幕仍属字幕路径，允许）；仍失败则如实告知用户，**不要**去掉 --no-asr 私自转写音频
-- 产出物：`{BV号}_transcript.json`（事实源：title、segments[]、part_sources）
+  - `official_cc` / `ytdlp_subtitle_file` / `srt` → 有字幕，直接进入 ②
+  - 报错"官方字幕不可用"：可加 `--ytdlp-subs` 再试一次（yt-dlp 字幕仍属字幕路径）；仍失败 → 进入 Step 2
+
+**Step 2：ASR 兜底转录（仅 cookie 有效时）**
+
+```bash
+python -m bilibili_transcript transcript "<BV号或链接>" \
+  -o case_outputs/<视频ID> --device cuda --compute-type float16
+```
+
+- **前提：Step 1 已确认 cookie 登录态有效**；cookie 无效必须先提示刷新，不私自转写
+- 默认 GPU（本机 RTX 5070 已配置好，transcribe.py 自动注入 nvidia DLL 路径）；无 GPU 机器去掉 `--device cuda --compute-type float16` 即回落 CPU
+- 模型：medium 已完整缓存（1.5G）；新机器缺模型时若直连 huggingface.co 超时，带代理下载：`HTTPS_PROXY=http://127.0.0.1:10808 HTTP_PROXY=http://127.0.0.1:10808`
+- 音频已下载过可加 `--skip-download` 复用
+- 耗时：GPU 约 1/20 实时（1 小时音频约 3-5 分钟）；CPU 30-60 分钟，嫌慢可 `--whisper-model small`
+- 产出物：`{BV号}_transcript.json`（事实源：title、segments[]、part_sources，mode 可能为 `asr`）
 
 ## ② 成稿 Markdown（LLM 分析 + 润色）
 
 基于 `{BV号}_transcript.json` 完成。**文件名不用视频原标题**（可能是"【直播回放】…"等流水账标题），按统一风格命名：
 
 ```
-{博主名}{YYYYMMDD}直播（{主题关键词}）_成稿.md
+{博主名}{YYYYMMDD}直播_{主题关键词}.md
 ```
 
 - **博主名**：从内容推断（如"老木匠"）
 - **日期**：直播日期 `YYYYMMDD`
-- **主题关键词**：2–3 个核心话题，中文全角括号包裹、顿号分隔
-- 文档内部 `# 标题` 与文件名主体一致（不用视频原标题）
-- 示例：`老木匠20260822直播（风险、房地产、周期股）_成稿.md`、`老木匠20260823直播（美债、美元、国家队）_成稿.md`
+- **主题关键词**：2–3 个核心话题，下划线分隔（与博主名/日期之间用 `_`，关键词之间用顿号 `、`）
+- **文件名不含"成稿"字样**；文档内部 `# 标题` 与文件名主体一致（不用视频原标题）
+- 示例：`老木匠20260822直播_风险、房地产、周期股.md`、`老木匠20260823直播_美债、美元、国家队.md`
 
 ### 文档结构（必须满足）
 
-1. `# {命名风格标题}`（如"老木匠20260823直播（美债、美元、国家队）"，不要用纯 ID）
+1. `# {命名风格标题}`（如"老木匠20260823直播_美债、美元、国家队"，不要用纯 ID）
 2. `## 全文总结` — 详细中文总结：背景、说话人、主线论点、关键数据、结论；可用 **加粗** 突出重点；不编造
 3. `## 1. 完整逐字稿` — 其下 **3–8 个小节** `### 1.1` … `### 1.N`
 4. 小节标题 = **话题短标题**（不要用纯时间段做标题）
@@ -76,15 +93,39 @@ python -m bilibili_transcript transcript "<BV号或链接>" \
 ## ③ 导出 HTML
 
 ```bash
-python -m bilibili_transcript export-html "path/to/xxx_成稿.md"
+python -m bilibili_transcript export-html "path/to/xxx.md"
 ```
 
 - **默认必做**，除非用户明确只要 Markdown
 - 多 P 视频每个 P 各自走完 ②→③
 
+## ④ 发布（复制归档 + 刷新总目）
+
+成稿 md 与 html 生成后，**必须**执行两步归档（除非用户明确说不需要）：
+
+**4.1 HTML → 雪球直播回放总目，并刷新**
+
+```bash
+cp "path/to/xxx.html" "E:/06_learning/01_python/01_learning/my_code/daily_case/xueqiu/直播回放/"
+cd "E:/06_learning/01_python/01_learning/my_code/daily_case/xueqiu/直播回放" && cmd //c refresh.cmd < /dev/null
+```
+
+- `refresh.cmd` 会合并分P（无分P自动跳过）并重建总目 `index.html`
+- 脚本末尾有 `pause`，用 `< /dev/null` 避免阻塞等待
+- 注意：中文路径传给 cmd 可能乱码，若 cmd //c 报错可直接 `./refresh.cmd` 执行；执行后 grep index.html 确认新条目已写入
+
+**4.2 成稿 MD → Evernote 归档**
+
+```bash
+cp "path/to/xxx.md" "D:/backup/wiz_export/Evernote/投资/买股票的老木匠_直播回放/"
+```
+
+- 多 P 视频：各 P 的成稿 md 均归档；HTML 归档合并版或各 P 版（与总目目录惯例一致）
+
 ## 完成后回复
 
 告知用户：
 - `.md` 与 `.html` 的路径
-- 字幕来源（`part_sources` 的 mode，应均为字幕）
+- 字幕来源（`part_sources` 的 mode：`official_cc` / `ytdlp_subtitle_file` / `srt` / `asr`）
+- 发布状态（HTML 已归档到雪球直播回放总目并刷新、MD 已归档到 Evernote）
 - 给 2–3 句内容摘要（体现分析价值）

@@ -4,10 +4,24 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import sysconfig
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+if os.name == "nt":
+    # Windows: ctranslate2 用标准 LoadLibrary 找 cuBLAS/cuDNN DLL（只搜 PATH），
+    # 不会自动发现 nvidia pip 包里的 DLL 目录，需手动把目录插入 PATH。
+    _nvidia_bin = Path(sysconfig.get_paths()["purelib"]) / "nvidia"
+    _extra: List[str] = []
+    for _rel in ("cublas/bin", "cudnn/bin"):
+        _d = _nvidia_bin / _rel
+        if _d.is_dir():
+            _extra.append(str(_d))
+    if _extra:
+        os.environ["PATH"] = os.pathsep.join(_extra) + os.pathsep + os.environ.get("PATH", "")
 
 
 def transcribe_mp3(
