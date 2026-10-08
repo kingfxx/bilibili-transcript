@@ -1,7 +1,7 @@
 {
   "version": 1,
   "_help": {
-    "editing": "在 uploaders 中复制一项添加 UP 主；Windows 路径建议使用 /，避免反斜杠转义。",
+    "editing": "先复制 uploader_mapping.sample.json 为 uploader_mapping.json，再编辑本地配置；本地文件不纳入 Git。Windows 路径建议使用 /。",
     "name": "视频元数据中的 UP 主名称；aliases 可填写其他已确认的名称。",
     "mid": "可选的 UP 主 UID（整数）；填入后优先按 UID 匹配，可应对改名。未知时填 null。",
     "mode": "text = 仅文字；illustrated = 文字加去重截图。用户当次明确要求优先于映射。",
@@ -18,15 +18,17 @@
   "uploaders": [
     {
       "name": "买股票的老木匠",
-      "aliases": ["老木匠"],
+      "aliases": [
+        "老木匠"
+      ],
       "mid": null,
       "mode": "text",
       "document_prefix": "老木匠",
       "filename_style": "livestream",
       "archive": {
-        "markdown_dir": "D:/backup/wiz_export/Evernote/投资/买股票的老木匠_直播回放",
+        "markdown_dir": "D:/bilibili-notes/markdown/买股票的老木匠",
         "assets_dir": null,
-        "html_dir": "E:/06_learning/01_python/01_learning/my_code/daily_case/xueqiu/直播回放",
+        "html_dir": "D:/bilibili-notes/html/买股票的老木匠",
         "refresh_index": true
       }
     },
@@ -48,9 +50,9 @@
         "crop_subtitles": true
       },
       "archive": {
-        "markdown_dir": "D:/backup/wiz_export/Evernote/投资/黄阳的学习分享",
-        "assets_dir": "D:/backup/wiz_export/Evernote/投资/黄阳的学习分享/assets",
-        "html_dir": "E:/06_learning/01_python/01_learning/my_code/daily_case/xueqiu/黄阳的学习分享",
+        "markdown_dir": "D:/bilibili-notes/markdown/黄阳的学习分享",
+        "assets_dir": "D:/bilibili-notes/markdown/黄阳的学习分享/assets",
+        "html_dir": "D:/bilibili-notes/html/黄阳的学习分享",
         "refresh_index": true
       }
     }

@@ -182,7 +182,15 @@ class YouTubeProvider(TranscriptProvider):
 
 ### 按 UP 主选择流程和归档路径
 
-手动编辑根目录 **`uploader_mapping.json`** 即可维护模式和归档目录：`text` 为纯文字，`illustrated` 为图文。已配置买股票的老木匠（纯文字）和黄阳的学习分享（图文）。`mid` 优先于 `name` / `aliases` 精确匹配；用户当次指令优先。未匹配默认纯文字、仅保留本地，不使用别人的归档目录。JSON 中路径建议使用 `/`。
+首次使用先复制样例，再编辑自己的归档路径：
+
+```powershell
+Copy-Item uploader_mapping.sample.json uploader_mapping.json
+```
+
+`uploader_mapping.sample.json` 纳入 Git；**`uploader_mapping.json` 为本地配置，已加入 `.gitignore`**，已有配置无需重新复制。样例中的 `D:/bilibili-notes/...` 是示例路径，使用前请修改。
+
+手动编辑根目录 **`uploader_mapping.json`** 即可维护模式和归档目录：`text` 为纯文字，`illustrated` 为图文。样例包含买股票的老木匠（纯文字）和黄阳的学习分享（图文）。`mid` 优先于 `name` / `aliases` 精确匹配；用户当次指令优先。未匹配默认纯文字、仅保留本地，不使用别人的归档目录。JSON 中路径建议使用 `/`。
 
 ```powershell
 python -m bilibili_transcript route "BV152PMeEESE"

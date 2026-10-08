@@ -6,7 +6,7 @@ description: >-
   也适用于已有 *_transcript.json 或 *_成稿.md 需要补后续阶段时。
 metadata:
   origin: custom
-  version: "2.8.0"
+  version: "2.8.1"
 ---
 
 # B 站视频一键分析全流程
@@ -150,6 +150,10 @@ python -m bilibili_transcript archive-notes "<成稿.md>" --transcript "<转录.
 - `refresh_index=true` 时调用现有 index-html 实现刷新该目录总目；合集按编号升序，直播按日期降序。不依赖 refresh.cmd，不额外归档到别的 UP 主目录。
 - 多 P 默认合成一份；用户明确要求分开时分别生成，并用 `archive-notes --name "有意义的文档名_P1"` 保留分 P 后缀，避免相互覆盖。`--name` 不含扩展名和合集序号前缀。
 - 归档前检查目标同名文档是否属于本视频；若属于其他视频，用 `--name` 添加有意义的标题后缀区分，不擅自覆盖，也不要给文档添加用户已要求去掉的 BV 号。权限不足时保留本地 publish 包并报告，不能宣称归档成功。
+
+## ⑤ 清理截图用视频（图文分支）
+
+图文成稿的 Markdown、HTML 生成并检查完成后，按 [图文笔记流程的清理规则](references/illustrated.md#生成完成后清理视频) 删除流程自动下载的截图用视频。配置了归档时，先确认归档成功再清理；不要在仅生成脚本草稿时提前删除。
 
 ## 完成后回复
 

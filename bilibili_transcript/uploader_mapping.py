@@ -12,6 +12,8 @@ DEFAULT_MAPPING = Path(__file__).resolve().parent.parent / "uploader_mapping.jso
 
 
 def load_mapping(path: Optional[Path] = None) -> Dict[str, Any]:
+    if path is None and not DEFAULT_MAPPING.is_file():
+        raise FileNotFoundError("缺少本地 uploader_mapping.json；请先复制 uploader_mapping.sample.json 为 uploader_mapping.json，并修改归档路径。")
     data = json.loads((path or DEFAULT_MAPPING).read_text(encoding="utf-8-sig"))
     if data.get("version") != 1 or not isinstance(data.get("uploaders"), list):
         raise ValueError("UP 主映射需要 version: 1 和 uploaders 列表。")

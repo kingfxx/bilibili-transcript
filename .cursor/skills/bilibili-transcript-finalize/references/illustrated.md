@@ -10,7 +10,7 @@
 python -m bilibili_transcript transcript "<BV号>" -o "case_outputs/<BV号>" --no-asr --screenshots
 ```
 
-不要重复执行字幕或 ASR。已有 JSON 可用 `screenshots` 子命令补图；已有视频可用 `--video-file` 复用（仅单个分 P）。保留原始转录 JSON、`*_frames/frames.json` 和视频，作为事实源与时间定位依据。
+不要重复执行字幕或 ASR。已有 JSON 可用 `screenshots` 子命令补图；已有视频可用 `--video-file` 复用（仅单个分 P）。保留原始转录 JSON 和 `*_frames/frames.json`，作为事实源与时间定位依据。截图用视频在本次文档制作期间保留，完成后按下方规则清理。
 
 ## 整理图文成稿
 
@@ -42,3 +42,11 @@ python -m bilibili_transcript transcript "<BV号>" -o "case_outputs/<BV号>" --n
 - 图片归档时统一命名为 `{BV号}_P{分P}_{截图毫秒数}.jpg`，避免统一 assets 目录中重名。
 - 使用公共 `archive-notes` 命令复制 MD/图片、改写相对引用、导出单文件 HTML，并刷新 mapping 指定目录的总目。合集总目按编号升序，直播总目按日期降序。
 - 合集更新或重排时先刷新顺序清单，再核对已归档文件编号。刷新清单不会自动重命名、删除已归档文件；不要留下同一视频两个编号版本，需整理时先列出受影响文件再处理。
+
+## 生成完成后清理视频
+
+- Markdown 和 HTML 成稿生成后，确认图片引用有效、HTML 图片已内嵌；如配置了归档，还须确认 Markdown、附件及 HTML 均已归档成功，再主动删除流程自动下载的截图用视频，无需再次询问。
+- 只删除本次处理视频对应的下载缓存，例如 `case_outputs/BV1Av9ZYCExh/BV1Av9ZYCExh_p1_video.mp4`；多 P 时逐一清理对应分 P。使用下载步骤实际返回的路径，或核对精确的 `{BV号}_p{分P}_video.*` 文件名，不批量删除其他视频或整个输出目录。
+- 删除前核对解析后的绝对路径位于本次 `case_outputs/<视频ID>` 目录中，用 PowerShell `Remove-Item -LiteralPath` 等精确路径操作。
+- 用户通过 `--video-file` 提供的原始视频不属于下载缓存，不删除；用户明确要求保留视频时也不清理。
+- 保留字幕 JSON、编辑稿、截图、`frames.json`、Markdown、HTML 和归档附件。处理或归档失败时暂留视频以便重试；清理后如需重新截图，再下载视频即可。
