@@ -221,6 +221,44 @@ def resolve_mp3_after_ytdlp(out_mp3: Path) -> Path:
     raise FileNotFoundError(f"No mp3 produced next to {out_mp3}")
 
 
+def download_part_video(
+    bvid: str,
+    page: int,
+    out_dir: Path,
+    cookies_from_browser: Optional[str] = None,
+    cookies_file: Optional[str] = None,
+) -> Path:
+    """Download the picture stream only (up to 1080p) for screenshots."""
+    from bilibili_transcript.wbi import to_netscape_cookie_file
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "yt-dlp", "--no-playlist", "--no-progress",
+        "-f", "bestvideo[height<=1080]/best[height<=1080]/bestvideo/best",
+        "-o", str(out_dir / f"{bvid}_p{page}_video.%(ext)s"),
+        "--print", "after_move:filepath",
+        f"{video_page_url(bvid)}?p={page}",
+    ]
+    cookie_tmp = None
+    if cookies_file:
+        cookie_tmp = to_netscape_cookie_file(cookies_file)
+        if cookie_tmp:
+            cmd[1:1] = ["--cookies", cookie_tmp]
+    elif cookies_from_browser:
+        cmd[1:1] = ["--cookies-from-browser", cookies_from_browser]
+    try:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8")
+        paths = result.stdout.strip().splitlines()
+        if len(paths) != 1 or not Path(paths[0]).is_file():
+            raise RuntimeError("视频下载未返回唯一文件，请检查分 P 选择。")
+        return Path(paths[0])
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"视频下载失败：{exc.stderr}") from exc
+    finally:
+        if cookie_tmp:
+            Path(cookie_tmp).unlink(missing_ok=True)
+
+
 def download_part_mp3(
     bvid: str,
     page: int,

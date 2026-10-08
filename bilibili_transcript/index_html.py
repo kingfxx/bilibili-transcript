@@ -1,6 +1,6 @@
 """Generate an index.html overview (总目) for a directory of Morandi transcript HTMLs.
 
-Each file becomes one card: date badge + title link + intro paragraph
+Each file becomes one card: date/collection badge + title link + intro paragraph
 (summary 首段) + section-title chips + a ``<details>`` block with the rest of
 the full summary. Cards are ordered by the 8-digit date in the filename,
 newest first. Re-running :func:`build_index_html` refreshes the index.
@@ -60,6 +60,8 @@ INDEX_CSS = """
     letter-spacing: 0.3px;
   }
   .card-title:hover { color: var(--accent-1); text-decoration: underline; }
+  .toc-course { display: flex; gap: 10px; align-items: baseline; }
+  .toc-course .toc-num { flex: 0 0 auto; min-width: 2em; }
   .card-intro {
     font-size: 0.9rem;
     color: var(--text);
@@ -251,8 +253,9 @@ def _render_sum_para(p: Dict[str, str]) -> str:
 def _render_card(entry: Dict[str, Any]) -> str:
     filename = entry["path"].name
     title = entry["title"] or filename
-    badge = _format_badge(entry["date"])
-    anchor = f"card-{entry['date']}" if entry["date"] else f"card-{_slugify(filename)}"
+    badge = entry["badge"]
+    anchor = entry["anchor"]
+    badge_html = f'<span class="date-badge">{html.escape(badge)}</span>' if badge else ""
 
     intro_html = ""
     details_html = ""
@@ -278,7 +281,7 @@ def _render_card(entry: Dict[str, Any]) -> str:
 
     return f"""    <article class="index-card" id="{html.escape(anchor)}">
       <div class="card-head">
-        <span class="date-badge">{badge}</span>
+        {badge_html}
         <a class="card-title" href="{html.escape(filename)}">{html.escape(title)}</a>
       </div>
 {intro_html}
@@ -293,10 +296,20 @@ def _slugify(name: str) -> str:
     return s or "entry"
 
 
-def build_index_html(directory: Path, out_path: Path) -> Path:
+def build_index_html(directory: Path, out_path: Path, *, sort_order: str | None = None,
+                     uploader_name: str | None = None) -> Path:
     """Scan ``directory`` for Morandi HTMLs (excluding ``index.html``) and
     write a date-descending overview to ``out_path``; returns ``out_path``."""
     directory = Path(directory)
+    # Direct CLI refreshes and archive refreshes use the same editable UP mapping.
+    from bilibili_transcript.uploader_mapping import load_mapping
+    uploader = next((u for u in load_mapping()["uploaders"]
+                     if u.get("archive") and
+                     Path(u["archive"]["html_dir"]).resolve() == directory.resolve()), None)
+    if sort_order is None:
+        sort_order = "sequence" if uploader and uploader.get("collection") else "date"
+    uploader_name = uploader_name or (uploader["name"] if uploader else directory.name)
+    page_title = f"{uploader_name} · 总目"
     entries: List[Dict[str, Any]] = []
     for f in sorted(directory.glob("*.html")):
         if f.name == "index.html":
@@ -308,7 +321,21 @@ def build_index_html(directory: Path, out_path: Path) -> Path:
             "date": m.group(1) if m else "",
             **parsed,
         })
-    entries.sort(key=lambda e: e["date"], reverse=True)
+    if sort_order == "sequence":
+        def sequence_key(entry):
+            match = re.match(r"^(\d+)_", entry["path"].name)
+            return (int(match[1]) if match else float("inf"), entry["path"].name)
+        entries.sort(key=sequence_key)
+    elif sort_order == "date":
+        entries.sort(key=lambda e: e["date"], reverse=True)
+    else:
+        raise ValueError("sort_order 必须为 date 或 sequence。")
+
+    for e in entries:
+        sequence = re.match(r"^(\d+)_", e["path"].name)
+        e["badge"] = sequence[1] if sort_order == "sequence" and sequence else _format_badge(e["date"])
+        e["anchor"] = (f"card-{e['date']}" if sort_order == "date" and e["date"]
+                       else f"card-{_slugify(e['path'].stem)}")
 
     n = len(entries)
     cards = "\n".join(_render_card(e) for e in entries)
@@ -336,7 +363,15 @@ def build_index_html(directory: Path, out_path: Path) -> Path:
             f'    <div class="toc-dates">\n{date_links}\n    </div>\n'
             f"  </details>"
         )
-    toc_html = "\n".join(toc_months)
+    def course_link(e):
+        badge = f'<span class="toc-num">{html.escape(e["badge"])}</span>' if e["badge"] else ""
+        title = html.escape(e["title"] or e["path"].stem)
+        return f'  <a class="toc-item toc-course" href="#{html.escape(e["anchor"])}">{badge}<span>{title}</span></a>'
+
+    if sort_order == "sequence":
+        toc_html = "\n".join(course_link(e) for e in entries)
+    else:
+        toc_html = "\n".join(toc_months + [course_link(e) for e in entries if not e["date"]])
 
     style = _style_block()
     style = style.replace("</style>", INDEX_CSS + "\n  </style>")
@@ -347,7 +382,7 @@ def build_index_html(directory: Path, out_path: Path) -> Path:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>老木匠直播回放 · 总目</title>
+<title>{html.escape(page_title)}</title>
 {style}
 </head>
 <body>
@@ -360,8 +395,8 @@ def build_index_html(directory: Path, out_path: Path) -> Path:
 </nav>
 <div class="container index-container" id="top">
   <header>
-    <h1>老木匠直播回放 · 总目</h1>
-    <div class="subtitle">共 {n} 场 · 生成于 {now}</div>
+    <h1>{html.escape(page_title)}</h1>
+    <div class="subtitle">共 {n} {"课" if sort_order == "sequence" else "篇"} · 生成于 {now}</div>
   </header>
   <div class="index-grid">
 {cards}

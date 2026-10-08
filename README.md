@@ -19,6 +19,40 @@ python -m bilibili_transcript transcript "BV1xxxxxxxxx" -o case_outputs/BV1xxxxx
 > 也可用 `--cookies-file path/to/cookies.txt` 指定其他位置，或用 `--cookies-from-browser chrome`
 > 直接从浏览器读取（注意新版 Chrome/Edge 加密可能读取失败）。
 
+## 视频截图与图文学习笔记
+
+对于 PPT 讲课视频，可额外生成带时间轴和去重截图的 Markdown / HTML：
+
+```bash
+python -m bilibili_transcript transcript "BV152PMeEESE" -o case_outputs/BV152PMeEESE --screenshots
+```
+
+默认每 **30 秒**取样一次，通过缩略图像素相似度去重。截图默认裁掉底部 **20%** 的字幕区域，避免黄色视频字幕进入笔记，也避免同一张 PPT 因字幕不同而重复展示。连续相似画面合并，所有讲解仍完整保留；后面再次出现相同画面时仅引用前面截图，不重复展示图片。正文去掉逐句时间轴，自动补充分隔标点并合并为段落，原始时间轴保留在 JSON 中。可用 `--screenshot-interval 15` 调整取样间隔。
+
+`transcript` 和 `screenshots` 均支持 `--subtitle-bottom-ratio`：例如 `0.15` 表示底部字幕占 15%；无画内字幕或课件重要内容位于底部时设为 `0`，保留、比较整个画面。`--no-crop-subtitles` 可以保留完整截图，同时仍在去重比较时忽略字幕区域。裁剪只去掉底部条带，不重绘 PPT。
+
+已有转录 JSON 时，无需重新抓字幕或 ASR：
+
+```bash
+python -m bilibili_transcript screenshots case_outputs/BV152PMeEESE/BV152PMeEESE_transcript.json
+# 已有本地视频（必须与 JSON 对应，且 JSON 只包含一个分 P）
+python -m bilibili_transcript screenshots path/to/transcript.json --video-file path/to/lesson.mp4 --interval 30
+```
+
+新增输出：`*_图文笔记.md`、`*_图文笔记.html`、`*_frames/` 截图与 `frames.json` 时间轴清单。原始 JSON 和纯文字稿继续保留。Markdown 使用相对图片路径，移动时需带上截图目录；HTML 内嵌图片，可单文件离线查看和分享。
+
+脚本按截图时间生成的正文属于草稿。语义成稿需要由 AI 助手结合原字幕和 PPT 完成：用课件标题或主题概括替换“画面 N”，按完整句意整理段落，避免把“而且很不幸的是”等引导语留在上一节末尾。**正文尽量保留原字幕的措辞、例子、数字和口播顺序，只调整标点、分段和必要的上下衔接；不把正文改写为总结稿。小标题和全文总结可以概括。** 样例编辑稿通过 `source_segment_range` 记录连续覆盖的原字幕范围，正文除标点和空白外与原字幕一致。成稿可以直接编辑 Markdown 后 `export-html`，也可以保存为编辑稿 JSON，通过 `--notes-file` 重复导出：
+
+```bash
+python -m bilibili_transcript screenshots case_outputs/BV152PMeEESE/BV152PMeEESE_transcript.json --video-file case_outputs/BV152PMeEESE/BV152PMeEESE_p1_video.mp4 --notes-file bilibili_transcript/presets/BV152PMeEESE_notes.json
+```
+
+编辑稿格式为 `{"summary": "全文总结", "sections": [{"part": 1, "time": 0, "heading": "主题标题", "paragraphs": ["完整段落。"]}]}`。`part` 和 `time` 必须覆盖 `frames.json` 的全部小节，截图间隔与去重设置须一致；程序会检查匹配后再替换正文，原转录 JSON 不变。语义整理不调用外部 LLM API。
+
+截图使用 ffmpeg / ffprobe，在线视频通过 yt-dlp 下载画面流（优先最高 1080p），复用现有 Cookie 参数。即使能直接获取字幕，截图仍需要下载视频，因此会增加时间和磁盘占用。`--screenshots` 不与 `--json-only` 同用。
+
+注意：这是固定间隔取样，并非翻页识别，短于取样间隔的页面可能错过。去重基于画面相似度，讲师窗口、动画等变化可能保留额外截图，细小内容变化也可能被合并。字幕按开始时间归属画面，跨边界的句子保留完整；多个分 P 分别截图和对齐。AI 润色图文笔记时应保留图片与对应时间段。
+
 ## 流程总览
 
 ```
@@ -145,6 +179,34 @@ class YouTubeProvider(TranscriptProvider):
 - 首次运行会从 HuggingFace 下载模型（默认 large-v3-turbo，约 1.6G）；直连超时时可用代理：`HTTPS_PROXY=http://127.0.0.1:10808 HTTP_PROXY=http://127.0.0.1:10808 python -m ...`
 
 ## AI 助手集成
+
+### 按 UP 主选择流程和归档路径
+
+手动编辑根目录 **`uploader_mapping.json`** 即可维护模式和归档目录：`text` 为纯文字，`illustrated` 为图文。已配置买股票的老木匠（纯文字）和黄阳的学习分享（图文）。`mid` 优先于 `name` / `aliases` 精确匹配；用户当次指令优先。未匹配默认纯文字、仅保留本地，不使用别人的归档目录。JSON 中路径建议使用 `/`。
+
+```powershell
+python -m bilibili_transcript route "BV152PMeEESE"
+python -m bilibili_transcript route --uploader "买股票的老木匠"
+```
+
+黄阳已配置合集 `4855956`，完整顺序保存在 `collection_orders/4855956.json`。刷新清单：
+
+```powershell
+python -m bilibili_transcript sync-collection "https://space.bilibili.com/291299472/lists/4855956?type=season" -o collection_orders/4855956.json
+```
+
+编号取合集显示顺序，不按发布时间或本次处理顺序。当前样例排第 2，文件名为 **`02_黄阳_为什么要学习投资.md/html`**，不加 BV 号。附件命名为 `BV152PMeEESE_P1_000750000.jpg`（最后一段为截图毫秒数），统一放在配置的 `assets_dir`。刷新清单不会自动重命名旧归档，应核对受影响编号，避免重复版本。
+
+成稿完成后，先生成本地 publish 包和 archive_plan.json，再执行归档：
+
+```powershell
+python -m bilibili_transcript archive-notes "case_outputs/BV152PMeEESE/BV152PMeEESE_transcript_图文笔记.md" --transcript "case_outputs/BV152PMeEESE/BV152PMeEESE_transcript.json" --uploader "黄阳的学习分享" --dry-run
+# 去掉 --dry-run 才实际写入 mapping 指定的归档目录。
+```
+
+新转录自动保存 owner，旧 JSON 缺少 owner 时可查询元数据或用已确认的 `--uploader`。归档复制附件、改写 MD 相对引用，HTML 内嵌图片；`refresh_index=true` 时刷新对应目录总目，合集按序号升序，直播按日期降序。`--name` 可指定不含扩展名/合集序号的文档名，用于有意义的标题区分或分 P 后缀。
+
+自动分流由 `bilibili-transcript-finalize` Skill 先运行 `route` 再调用对应流程。直接运行 `transcript` 仍用显式 `--screenshots` 控制截图，不会因修改 mapping 隐式下载视频。
 
 本项目的 Skill 文件定义了 AI 助手的执行流程：官方字幕优先，确认无字幕且 cookie 登录态有效时走 GPU ASR 兜底转录 → 润色成稿 → 导出 HTML → 归档发布。它不绑定特定工具——任何能读写文件、执行 shell 命令的 AI 编程助手都可以按此流程工作。
 

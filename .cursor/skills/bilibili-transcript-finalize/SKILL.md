@@ -2,10 +2,11 @@
 name: bilibili-transcript-finalize
 description: >-
   Use when 用户要求「分析 / 整理 / 转写 B 站视频」并给出 BV 号或 bilibili 链接（bilibili.com、b23.tv）。
-  输入 BV 号后自动完成全流程：官方字幕优先，确认无字幕且 cookie 有效时 ASR 兜底转录 → LLM 润色成稿 → 导出 HTML。
+  按 uploader_mapping.json 根据 UP 主自动选择纯文字或图文笔记，获取字幕/必要时 ASR，整理成稿并按配置归档；支持合集顺序编号。
   也适用于已有 *_transcript.json 或 *_成稿.md 需要补后续阶段时。
-origin: custom
-version: 2.7.0
+metadata:
+  origin: custom
+  version: "2.8.0"
 ---
 
 # B 站视频一键分析全流程
@@ -27,6 +28,26 @@ version: 2.7.0
 
 1. 用户说「分析 / 整理 / 转写 BVxxx」或发 bilibili 链接（`bilibili.com`、`b23.tv`、含 `BV` 号）→ 完整执行 ①②③
 2. 已有 `*_transcript.json` 或 `成稿.md` → 从缺失阶段开始补
+
+## ⓪ 按 UP 主映射选择流程
+
+每次分析视频先读取仓库根目录 `uploader_mapping.json`，不要沿用上次视频的模式或目录。通过视频元数据中的 `owner.name` / `owner.mid` 匹配，不能凭视频标题、PPT 风格或内容猜 UP 主。
+
+```powershell
+python -m bilibili_transcript route "<视频URL/BV号/已有转录JSON>"
+```
+
+- UID（mid）优先，名称和 aliases 精确匹配；用户当次明确指定的模式/目录优先于 mapping。
+- `mode=text`：沿用下方纯文字流程，归档目录以 mapping 为准。买股票的老木匠已配置为此模式。
+- `mode=illustrated`：先阅读 [图文笔记流程](references/illustrated.md)，按其中规则执行阶段①②③；不套用下方直播命名、3–8 节与时间标签要求。黄阳的学习分享已配置为此模式。
+- 未匹配：默认纯文字，产出保留本地；需要归档时询问归档路径，不能使用别人的目录。可让用户将新 UP 主加入 mapping。
+- 有 `collection` 配置：开始一次课程处理/批次前，用下列命令刷新完整合集清单，再运行 route。URL 和输出位置都从 mapping 读取：
+
+```powershell
+python -m bilibili_transcript sync-collection "<collection.url>" -o "<collection.order_file>"
+```
+
+合集编号以全部视频的显示顺序为准。单独处理某一课也取它在完整合集中的位置；不按发布时间重排。合集接口失败时明确报告，不能猜序号。未列入指定合集的视频不强行编号。清单改变不会自动重命名旧文件，需在归档前核对已存在的文件。
 
 ## ① 字幕导出与 ASR 兜底（纯脚本）
 
@@ -59,6 +80,8 @@ python -m bilibili_transcript transcript "<BV号或链接>" \
 - 产出物：`{BV号}_transcript.json`（事实源：title、segments[]、part_sources，mode 可能为 `asr`）
 
 ## ② 成稿 Markdown（LLM 分析 + 润色）
+
+以下为 `mode=text` 的标准直播规则；图文分支使用 references/illustrated.md。
 
 基于 `{BV号}_transcript.json` 完成。**文件名不用视频原标题**（可能是"【直播回放】…"等流水账标题），按统一风格命名：
 
@@ -110,34 +133,28 @@ python -m bilibili_transcript export-html "path/to/xxx.md"
 - **默认必做**，除非用户明确只要 Markdown
 - 多 P 视频**默认合并**为单份 md，以合并版为输入一次性导出；用户明确要求分开时（见②「分P与合并」），各 P 单独导出
 
-## ④ 发布（复制归档 + 刷新总目）
+## ④ 按 mapping 归档（两种模式共用）
 
-成稿 md 与 html 生成后，**必须**执行两步归档（除非用户明确说不需要）：
+归档目录不写死在 Skill 中，读取 `uploader_mapping.json`。默认完成归档，除非用户明确只要本地结果或尚未配置归档路径。仅在成稿完成后执行，不能把脚本占位草稿当成成稿归档。
 
-**4.1 HTML → 雪球直播回放总目，并刷新**
-
-```bash
-cp "path/to/xxx.html" "E:/06_learning/01_python/01_learning/my_code/daily_case/xueqiu/直播回放/"
-cd "E:/06_learning/01_python/01_learning/my_code/daily_case/xueqiu/直播回放" && cmd //c refresh.cmd < /dev/null
+```powershell
+python -m bilibili_transcript archive-notes "<成稿.md>" --transcript "<转录.json>" --dry-run
+python -m bilibili_transcript archive-notes "<成稿.md>" --transcript "<转录.json>"
 ```
 
-- `refresh.cmd` 会合并分P（无分P自动跳过）并重建总目 `index.html`
-- 脚本末尾有 `pause`，用 `< /dev/null` 避免阻塞等待
-- 注意：中文路径传给 cmd 可能乱码，若 cmd //c 报错可直接 `./refresh.cmd` 执行；执行后 grep index.html 确认新条目已写入
+`--dry-run` 在源稿目录的 publish 子目录生成可检查的成稿、图片和内嵌 HTML，以及 archive_plan.json；不写归档目录。检查计划中的 UP 主、输出模式、合集编号和目标路径后，执行实际归档，无需因例行检查另问用户确认。
 
-**4.2 成稿 MD → Evernote 归档**
-
-```bash
-cp "path/to/xxx.md" "D:/backup/wiz_export/Evernote/投资/买股票的老木匠_直播回放/"
-```
-
-- 多 P 视频**默认**：md 与 html 各归档一份**合并版**即可（总目 index.html 由 refresh.cmd 自动重建）
-- 分开模式（用户明确要求分开时）：各 P 的成稿 md 均归档、HTML 各 P 版各自归档
+- 新转录 JSON 自动保存 owner；旧 JSON 缺 owner 时 route 会查询视频元数据，也可用经确认的 `--uploader "UP主名称"`。
+- 纯文字直播沿用成稿文件名；title 模式按 mapping 的 document_prefix 和视频标题命名，不加 BV 号；合集成员添加原始位置编号。
+- 图片复制到 assets_dir，并改写 MD 图片相对引用；图片名包含 BV 号、分 P、截图时间。HTML 内嵌图片，只复制单个 HTML 到 html_dir 即可。
+- `refresh_index=true` 时调用现有 index-html 实现刷新该目录总目；合集按编号升序，直播按日期降序。不依赖 refresh.cmd，不额外归档到别的 UP 主目录。
+- 多 P 默认合成一份；用户明确要求分开时分别生成，并用 `archive-notes --name "有意义的文档名_P1"` 保留分 P 后缀，避免相互覆盖。`--name` 不含扩展名和合集序号前缀。
+- 归档前检查目标同名文档是否属于本视频；若属于其他视频，用 `--name` 添加有意义的标题后缀区分，不擅自覆盖，也不要给文档添加用户已要求去掉的 BV 号。权限不足时保留本地 publish 包并报告，不能宣称归档成功。
 
 ## 完成后回复
 
 告知用户：
 - `.md` 与 `.html` 的路径
 - 字幕来源（`part_sources` 的 mode：`official_cc` / `ytdlp_subtitle_file` / `srt` / `asr`）
-- 发布状态（HTML 已归档到雪球直播回放总目并刷新、MD 已归档到 Evernote）
+- 实际选择的 UP 主与模式、合集编号（如有）、MD/HTML/图片的归档位置与总目刷新状态
 - 给 2–3 句内容摘要（体现分析价值）

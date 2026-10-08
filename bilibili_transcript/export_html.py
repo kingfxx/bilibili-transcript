@@ -6,9 +6,11 @@ Only structural mapping + HTML escaping; does not alter transcript content.
 from __future__ import annotations
 
 import html
+import base64
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import unquote
 
 REPO = Path(__file__).resolve().parents[1]
 TEMPLATE = REPO / "docs/transcript_morandi_html/morandi-template.html"
@@ -115,8 +117,10 @@ def _build_html(
     note: str,
     sections: list[dict],
     footer_txt: str,
+    image_root: Optional[Path] = None,
 ) -> str:
     style = _style_block()
+    style += '<style>.transcript-frame{margin:20px 0}.transcript-frame img{display:block;width:100%;height:auto;border-radius:8px}.transcript-frame figcaption{text-align:center;margin-top:8px;color:#666}</style>'
     sum_ps = "".join(f"<p>{_inline_md(p)}</p>" for p in summary_paras)
     note_html = f'<div class="note">{_inline_md("说明：" + note)}</div>' if note else ""
 
@@ -124,7 +128,7 @@ def _build_html(
     for idx, s in enumerate(sections, 1):
         intro = _inline_md(s["intro"]) if s["intro"] else ""
         tt = f'<span class="time-tag">⏱ {html.escape(s["time"])}</span>' if s["time"] else ""
-        ph = "".join(f"<p>{_inline_md(p)}</p>" for p in s["paras"])
+        ph = "".join(_body_html(p, image_root) for p in s["paras"])
         blocks.append(
             f"""  <div class="section" id="sec-{idx}">
     <div class="section-header">
@@ -191,6 +195,24 @@ def _guess_subtitle(md_path: Path) -> str:
     return ""
 
 
+def _body_html(paragraph: str, image_root: Optional[Path]) -> str:
+    """Embed local Markdown images so exported HTML remains portable."""
+    match = re.fullmatch(r"!\[([^\]]*)\]\(([^\n]+)\)", paragraph)
+    if match and image_root is not None:
+        image = (image_root / unquote(match[2])).resolve()
+        try:
+            image.relative_to(image_root.resolve())
+        except ValueError as exc:
+            raise ValueError("截图必须位于 Markdown 所在目录或其子目录。") from exc
+        mime = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}.get(image.suffix.lower())
+        if not mime:
+            raise ValueError(f"不支持的截图格式：{image.suffix}")
+        encoded = base64.b64encode(image.read_bytes()).decode("ascii")
+        alt = html.escape(match[1], quote=True)
+        return f'<figure class="transcript-frame"><img src="data:{mime};base64,{encoded}" alt="{alt}" loading="lazy"><figcaption>{alt}</figcaption></figure>'
+    return f"<p>{_inline_md(paragraph)}</p>"
+
+
 def export_morandi_html(md_path: Path, out_path: Optional[Path] = None) -> Path:
     """Top-level entry: MD → HTML, returns output path."""
     title, summary_paras, note, sections = _parse_md(md_path)
@@ -199,11 +221,15 @@ def export_morandi_html(md_path: Path, out_path: Optional[Path] = None) -> Path:
     part_hint = _guess_subtitle(md_path)
     video_id = parent.split("_p")[0] if parent.startswith("BV") and "_p" in parent else (parent[:12] if parent.startswith("BV") else "")
     subtitle_parts = [p for p in [video_id, part_hint, "视频转写"] if p]
+    header = md_path.read_text(encoding="utf-8").partition("## 全文总结")[0]
+    upload_time = re.search(r"^视频上传时间：[^\n]+", header, re.MULTILINE)
+    if upload_time:
+        subtitle_parts.append(upload_time[0])
     subtitle = " · ".join(subtitle_parts)
 
     out = out_path or md_path.with_suffix(".html")
     out.write_text(
-        _build_html(title, subtitle, summary_paras, note, sections, "由 bilibili_transcript 导出 · 仅供个人学习"),
+        _build_html(title, subtitle, summary_paras, note, sections, "由 bilibili_transcript 导出 · 仅供个人学习", image_root=md_path.parent),
         encoding="utf-8",
     )
     return out

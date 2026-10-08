@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import math
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -35,10 +37,10 @@ def resolve_compute_type(compute_type: str, device: str) -> str:
     return "float16" if device == "cuda" else "int8"
 
 
-def merge_segment_lists(part_segments: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def merge_segment_lists(part_segments: List[List[Dict[str, Any]]], part_indices: Optional[List[int]] = None) -> List[Dict[str, Any]]:
     merged: List[Dict[str, Any]] = []
     new_id = 0
-    for part_idx, segs in enumerate(part_segments, start=1):
+    for part_idx, segs in zip(part_indices or list(range(1, len(part_segments) + 1)), part_segments):
         for s in segs:
             merged.append({
                 "id": new_id,
@@ -115,6 +117,12 @@ def resolve_cookies_file(cookies_file: Optional[str], root: Optional[Path] = Non
 
 
 def run_pipeline(args: argparse.Namespace) -> int:
+    if args.screenshots and args.json_only:
+        logger.error("--screenshots 与 --json-only 不能同时使用。请用 screenshots 子命令给已有 JSON 补图。")
+        return 2
+    if args.screenshots and (not math.isfinite(args.screenshot_interval) or args.screenshot_interval <= 0):
+        logger.error("截图间隔必须为大于 0 的有限数值。")
+        return 2
     if getattr(args, "force_asr", False) and getattr(args, "no_asr", False):
         logger.error("--force-asr 与 --no-asr 互斥，不能同时使用。")
         return 2
@@ -189,7 +197,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         sources.append(src.to_dict())
         logger.info("Part %s: %s", pi, src.mode)
 
-    merged_segments = merge_segment_lists(all_seg_lists)
+    merged_segments = merge_segment_lists(all_seg_lists, page_indices)
     if not merged_segments:
         logger.error("No segments produced (subtitles and ASR both empty). Try --no-vad or check the video.")
         return 4
@@ -200,6 +208,9 @@ def run_pipeline(args: argparse.Namespace) -> int:
         "video_id": video_id,
         "bvid": video_id,  # backward compat for bilibili
         "title": meta.title,
+        "owner": meta.extra.get("owner") or {},
+        "pubdate": meta.extra.get("pubdate"),
+        "ctime": meta.extra.get("ctime"),
         "text": full_text,
         "segments": merged_segments,
         "part_sources": sources,
@@ -224,6 +235,31 @@ def run_pipeline(args: argparse.Namespace) -> int:
         logger.info("Wrote %s (structured draft for review)", ev_path)
     except Exception as e:
         logger.warning("Skipped eval markdown: %s", e)
+    if args.screenshots:
+        from bilibili_transcript.screenshots import write_illustrated_notes
+        out = write_illustrated_notes(
+            json_path, interval=args.screenshot_interval,
+            subtitle_bottom_ratio=args.subtitle_bottom_ratio,
+            notes_file=Path(args.notes_file) if args.notes_file else None,
+            crop_subtitles=args.crop_subtitles,
+            cookies_file=args.cookies_file, cookies_from_browser=args.cookies_from_browser,
+        )
+        logger.info("Wrote %s and %s", out, out.with_suffix(".html"))
+    return 0
+
+
+def run_screenshots(args: argparse.Namespace) -> int:
+    from bilibili_transcript.screenshots import write_illustrated_notes
+    out = write_illustrated_notes(
+        Path(args.input).resolve(), interval=args.interval,
+        subtitle_bottom_ratio=args.subtitle_bottom_ratio,
+        notes_file=Path(args.notes_file) if args.notes_file else None,
+        crop_subtitles=args.crop_subtitles,
+        video_file=Path(args.video_file).resolve() if args.video_file else None,
+        cookies_file=resolve_cookies_file(args.cookies_file),
+        cookies_from_browser=args.cookies_from_browser,
+    )
+    logger.info("Wrote %s and %s", out, out.with_suffix(".html"))
     return 0
 
 
@@ -334,6 +370,34 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("transcript", help="Fetch transcript from video URL")
     _add_transcript_args(p)
 
+    route = sub.add_parser("route", help="Resolve UP-owner processing mode and archive paths")
+    route.add_argument("input", nargs="?", help="Video URL/ID or existing transcript JSON")
+    route.add_argument("--uploader", help="UP-owner name for offline lookup")
+    route.add_argument("--mid", type=int, help="UP-owner UID")
+    route.add_argument("--mapping-file", help="Editable uploader mapping JSON")
+
+    collection = sub.add_parser("sync-collection", help="Save the complete season order for numbered notes")
+    collection.add_argument("url", help="Bilibili season collection URL")
+    collection.add_argument("-o", "--output", required=True, help="Order snapshot JSON path")
+
+    archive = sub.add_parser("archive-notes", help="Stage/archive finalized MD, attachments and embedded HTML by uploader")
+    archive.add_argument("input", help="Finalized Markdown")
+    archive.add_argument("--transcript", required=True, help="Source transcript JSON with video ID and owner")
+    archive.add_argument("--uploader", help="Explicit UP-owner name for legacy JSON without owner")
+    archive.add_argument("--name", help="Document basename override without extension or collection prefix (e.g. part suffix)")
+    archive.add_argument("--mapping-file", help="Editable uploader mapping JSON")
+    archive.add_argument("--dry-run", action="store_true", help="Build local publish package and show plan without writing archive directories")
+
+    sc = sub.add_parser("screenshots", help="Create deduplicated illustrated MD/HTML from transcript JSON")
+    sc.add_argument("input", help="Existing transcript JSON")
+    sc.add_argument("--interval", type=float, default=30.0, help="Screenshot sampling interval in seconds (default: 30)")
+    sc.add_argument("--video-file", help="Local video matching a single-part transcript")
+    sc.add_argument("--notes-file", help="Reviewed JSON headings and paragraphs for these frames")
+    sc.add_argument("--subtitle-bottom-ratio", type=float, default=0.2, help="Bottom subtitle fraction cropped/ignored (default: 0.2; use 0 for no subtitles)")
+    sc.add_argument("--crop-subtitles", action=argparse.BooleanOptionalAction, default=True, help="Crop bottom subtitles from displayed frames (default: on)")
+    sc.add_argument("--cookies-file", default=None)
+    sc.add_argument("--cookies-from-browser", default=None)
+
     # export-html subcommand
     h = sub.add_parser("export-html", help="Convert 成稿.md to Morandi HTML")
     h.add_argument("input", help="Path to *_transcript_成稿.md or a directory containing one")
@@ -382,6 +446,11 @@ def _add_transcript_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--language", default="zh", help="Whisper language code (default: zh)")
     p.add_argument("--no-vad", action="store_true", help="Disable VAD filter (try for music/BGM)")
     p.add_argument("--json-only", action="store_true", help="Output JSON only, skip Markdown")
+    p.add_argument("--screenshots", action="store_true", help="Also generate deduplicated illustrated MD and offline HTML")
+    p.add_argument("--notes-file", help="Reviewed JSON headings and paragraphs (with --screenshots)")
+    p.add_argument("--screenshot-interval", type=float, default=30.0, metavar="SEC", help="Screenshot sampling interval (default: 30)")
+    p.add_argument("--subtitle-bottom-ratio", type=float, default=0.2, help="Bottom subtitle fraction cropped/ignored (default: 0.2; use 0 for no subtitles)")
+    p.add_argument("--crop-subtitles", action=argparse.BooleanOptionalAction, default=True, help="Crop bottom subtitles from displayed frames (default: on)")
     p.add_argument("--buckets", type=int, default=None, metavar="N",
                    help="Override 成稿 section count (default: auto 3-8 by video length)")
     p.add_argument("--chunk-span", type=float, default=300.0, metavar="SEC", help="Draft section span in seconds (default: 300)")
@@ -403,6 +472,29 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
 
     try:
+        if args.command == "archive-notes":
+            from bilibili_transcript.archive_notes import archive_notes
+            plan = archive_notes(Path(args.input), Path(args.transcript), uploader=args.uploader,
+                                 mapping_file=Path(args.mapping_file) if args.mapping_file else None,
+                                 dry_run=args.dry_run, name=args.name)
+            print(json.dumps(plan, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "sync-collection":
+            from bilibili_transcript.collection_order import fetch_collection_order
+            snapshot = fetch_collection_order(args.url)
+            output = Path(args.output)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            logger.info("Wrote %s (%s videos, collection display order)", output, len(snapshot["videos"]))
+            return 0
+        if args.command == "route":
+            from bilibili_transcript.uploader_mapping import route_input
+            result = route_input(args.input, uploader=args.uploader, mid=args.mid,
+                                 mapping_file=Path(args.mapping_file) if args.mapping_file else None)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "screenshots":
+            return run_screenshots(args)
         if args.command == "export-html":
             return run_export_html(args)
         if args.command == "merge-html":

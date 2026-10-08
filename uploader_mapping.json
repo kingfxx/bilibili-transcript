@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "_help": {
+    "editing": "在 uploaders 中复制一项添加 UP 主；Windows 路径建议使用 /，避免反斜杠转义。",
+    "name": "视频元数据中的 UP 主名称；aliases 可填写其他已确认的名称。",
+    "mid": "可选的 UP 主 UID（整数）；填入后优先按 UID 匹配，可应对改名。未知时填 null。",
+    "mode": "text = 仅文字；illustrated = 文字加去重截图。用户当次明确要求优先于映射。",
+    "filename_style": "livestream = 沿用原直播日期/主题命名；title = 前缀_视频标题，不加 BV 号。",
+    "archive": "markdown_dir 是 Markdown 目录；assets_dir 是统一图片目录；html_dir 是 HTML 目录；refresh_index 表示归档后刷新该 HTML 目录总目。",
+    "screenshots": "interval 为截图秒数；subtitle_bottom_ratio 为底部字幕占比；crop_subtitles 控制是否裁掉该区域。",
+    "collection": "可选合集 URL 和 order_file（相对 mapping 所在目录）；按完整合集顺序给 MD/HTML 加相同编号，不按发布时间或本次处理顺序排序。用 sync-collection 更新顺序文件。",
+    "unmatched": "未匹配时只做文字并保留本地，待用户指定归档位置；不会归入其他 UP 主目录。"
+  },
+  "unmatched": {
+    "mode": "text",
+    "archive": null
+  },
+  "uploaders": [
+    {
+      "name": "买股票的老木匠",
+      "aliases": ["老木匠"],
+      "mid": null,
+      "mode": "text",
+      "document_prefix": "老木匠",
+      "filename_style": "livestream",
+      "archive": {
+        "markdown_dir": "D:/backup/wiz_export/Evernote/投资/买股票的老木匠_直播回放",
+        "assets_dir": null,
+        "html_dir": "E:/06_learning/01_python/01_learning/my_code/daily_case/xueqiu/直播回放",
+        "refresh_index": true
+      }
+    },
+    {
+      "name": "黄阳的学习分享",
+      "aliases": [],
+      "mid": 291299472,
+      "mode": "illustrated",
+      "document_prefix": "黄阳",
+      "filename_style": "title",
+      "collection": {
+        "url": "https://space.bilibili.com/291299472/lists/4855956?type=season",
+        "order_file": "collection_orders/4855956.json",
+        "number_width": 2
+      },
+      "screenshots": {
+        "interval": 30,
+        "subtitle_bottom_ratio": 0.2,
+        "crop_subtitles": true
+      },
+      "archive": {
+        "markdown_dir": "D:/backup/wiz_export/Evernote/投资/黄阳的学习分享",
+        "assets_dir": "D:/backup/wiz_export/Evernote/投资/黄阳的学习分享/assets",
+        "html_dir": "E:/06_learning/01_python/01_learning/my_code/daily_case/xueqiu/黄阳的学习分享",
+        "refresh_index": true
+      }
+    }
+  ]
+}

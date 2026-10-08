@@ -53,6 +53,48 @@ def _write_transcript(tmp_path, date, name=None, **kw):
     return p
 
 
+def test_collection_index_uses_numeric_order(tmp_path):
+    for number in [10, 2, 1]:
+        _write_transcript(tmp_path, "", name=f"{number:02d}_黄阳_第{number}课.html", title=f"第{number}课",
+                          bvid="", summary_paras=["摘要"], section_titles=["课件"])
+    out = build_index_html(tmp_path, tmp_path / "index.html", sort_order="sequence", uploader_name="黄阳的学习分享")
+    text = out.read_text(encoding="utf-8")
+    assert text.index('href="01_') < text.index('href="02_') < text.index('href="10_')
+    assert '<h1>黄阳的学习分享 · 总目</h1>' in text
+    assert '<title>黄阳的学习分享 · 总目</title>' in text
+    assert '老木匠直播回放' not in text
+    assert '<span class="date-badge">02</span>' in text
+    assert '<span class="date-badge">10</span>' in text
+    for number in [1, 2, 10]:
+        anchor = f'card-{number:02d}-黄阳-第{number}课'
+        assert f'href="#{anchor}"' in text
+        assert f'id="{anchor}"' in text
+    assert '共 3 课' in text
+
+
+def test_index_refresh_resolves_uploader_and_collection_from_mapping(tmp_path, monkeypatch):
+    from bilibili_transcript import uploader_mapping
+    monkeypatch.setattr(uploader_mapping, 'load_mapping', lambda: {'uploaders': [{
+        'name': '黄阳的学习分享', 'archive': {'html_dir': str(tmp_path)}, 'collection': {'url': 'season'},
+    }]})
+    for number in [3, 2]:
+        _write_transcript(tmp_path, '', name=f'{number:02d}_黄阳_第{number}课.html', title=f'第{number}课',
+                          bvid='', summary_paras=['摘要'], section_titles=[])
+    text = build_index_html(tmp_path, tmp_path / 'index.html').read_text(encoding='utf-8')
+    assert '<h1>黄阳的学习分享 · 总目</h1>' in text
+    assert text.index('href="02_') < text.index('href="03_')
+    assert '<span class="date-badge">02</span>' in text
+    assert '<span class="date-badge">03</span>' in text
+
+
+def test_undated_notes_have_navigation_without_empty_badge(tmp_path):
+    _write_transcript(tmp_path, '', name='普通笔记.html', title='普通笔记', bvid='', summary_paras=[], section_titles=[])
+    text = build_index_html(tmp_path, tmp_path / 'index.html', uploader_name='其他UP').read_text(encoding='utf-8')
+    assert 'href="#card-普通笔记"' in text
+    assert 'id="card-普通笔记"' in text
+    assert '<span class="date-badge"></span>' not in text
+
+
 class TestParseTranscriptHtml:
     def test_extracts_title_bvid_summary_sections(self, tmp_path):
         p = _write_transcript(
