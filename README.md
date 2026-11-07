@@ -19,6 +19,16 @@ python -m bilibili_transcript transcript "BV1xxxxxxxxx" -o case_outputs/BV1xxxxx
 > 也可用 `--cookies-file path/to/cookies.txt` 指定其他位置，或用 `--cookies-from-browser chrome`
 > 直接从浏览器读取（注意新版 Chrome/Edge 加密可能读取失败）。
 
+## 充电专属动态归档
+
+独立模块使用现有 Cookie，翻页筛选 UP 主的充电专属动态，一个 UP 主保存为一个 Markdown 文件：
+
+```powershell
+python -m bilibili_transcript.charged_posts 3546781568731724 --output-dir "D:\backup\wiz_export\Evernote\投资\买股票的老木匠_充电"
+```
+
+默认加载项目根目录 `bili_cookie.txt`，也可指定 `--cookies-file`。文件名为 `UP主名字_充电.md`；正文以北京时间 `## YYYY-MM-DD HH:MM` 分标题，最新动态在前，保留原文、来源链接和图片链接。视频动态保存动态文字与视频链接，不自动转录视频。仅归档当前登录态有权访问的内容；权限受限、正文截断或分页异常时终止，不覆盖已有归档。重复执行会重新抓取并更新同名文件。
+
 ## 视频截图与图文学习笔记
 
 对于 PPT 讲课视频，可额外生成带时间轴和去重截图的 Markdown / HTML：
