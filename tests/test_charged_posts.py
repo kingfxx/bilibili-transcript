@@ -70,3 +70,11 @@ def test_markdown_dates_are_body_headings_and_newest_first():
 def test_extract_mid():
     assert charged.extract_mid("https://space.bilibili.com/123/dynamic?x=1") == "123"
     assert charged.extract_mid("123") == "123"
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r", "\n\n", "\n \n"])
+def test_original_paragraph_boundaries_are_markdown_paragraphs(newline):
+    paragraphs = ["第一段。包含两句话。", "第二段。", "第三段。", "第四段。"]
+    body = charged.post_body(post(text=newline.join(paragraphs)))
+    assert body.split("\n\n")[:4] == paragraphs
+    assert "\n\n\n" not in body

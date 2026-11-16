@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from bilibili_transcript.browser_login import browser_cookie_file, browser_login_ready, setup_browser_login
 from bilibili_transcript.draft_md import build_draft_transcript_markdown
 from bilibili_transcript.finalize_md import write_eval_markdown_from_json
 from bilibili_transcript.providers import detect_provider
@@ -74,7 +75,7 @@ def obtain_part_segments(
     if getattr(args, "no_asr", False):
         raise RuntimeError(
             f"Part {part_index} 官方字幕不可用且已禁用音频转写（--no-asr）。"
-            "如需字幕，请确认 bili_cookie.txt 登录态有效、网页上确有 CC 字幕，"
+            "如需字幕，请确认 B 站登录态有效、网页上确有 CC 字幕，"
             "或改用 --ytdlp-subs 尝试 yt-dlp 字幕；如需音频转写请去掉 --no-asr。"
         )
 
@@ -126,8 +127,18 @@ def run_pipeline(args: argparse.Namespace) -> int:
     if getattr(args, "force_asr", False) and getattr(args, "no_asr", False):
         logger.error("--force-asr 与 --no-asr 互斥，不能同时使用。")
         return 2
-    args.cookies_file = resolve_cookies_file(args.cookies_file)
-    if args.cookies_file:
+    provider = detect_provider(args.input)
+    if provider.name == "bilibili" and not (args.cookies_file or args.cookies_from_browser) and browser_login_ready():
+        with browser_cookie_file("https://www.bilibili.com/") as cookies_file:
+            browser_args = argparse.Namespace(**vars(args))
+            browser_args.cookies_file = cookies_file
+            return _run_pipeline(browser_args, provider, browser_verified=True)
+    args.cookies_file = resolve_cookies_file(args.cookies_file) if not args.cookies_from_browser else args.cookies_file
+    return _run_pipeline(args, provider)
+
+
+def _run_pipeline(args: argparse.Namespace, provider, *, browser_verified=False) -> int:
+    if args.cookies_file and not browser_verified:
         logger.info("使用 Cookie 文件: %s", args.cookies_file)
         try:
             from bilibili_transcript.wbi import check_cookies_file_login
@@ -138,9 +149,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 elif login.get("code") == -101:
                     logger.warning(
                         "⚠ Cookie 已失效（账号未登录，code=-101）。"
-                        "如需抓取仅登录可见的字幕，请更新 %s："
-                        "在浏览器扩展（EditThisCookie/Cookie-Editor 等）重新导出 B 站 Cookie "
-                        "（JSON 数组或 Netscape 格式）覆盖该文件后重试。",
+                        "如需抓取仅登录可见的字幕，请运行 python -m bilibili_transcript browser-login，"
+                        "或更新 %s 后重试。",
                         args.cookies_file,
                     )
                 else:
@@ -150,7 +160,6 @@ def run_pipeline(args: argparse.Namespace) -> int:
                     )
         except Exception as e:
             logger.warning("验证 Cookie 登录态失败: %s", e)
-    provider = detect_provider(args.input)
     logger.info("Source: %s", provider.name)
 
     video_id = provider.extract_id(args.input)
@@ -369,6 +378,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Default: transcript pipeline (also works without subcommand for backward compat)
     p = sub.add_parser("transcript", help="Fetch transcript from video URL")
     _add_transcript_args(p)
+    sub.add_parser("browser-login", help="Sign in once in the shared Bilibili browser profile")
 
     route = sub.add_parser("route", help="Resolve UP-owner processing mode and archive paths")
     route.add_argument("input", nargs="?", help="Video URL/ID or existing transcript JSON")
@@ -472,6 +482,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
 
     try:
+        if args.command == "browser-login":
+            setup_browser_login()
+            return 0
         if args.command == "archive-notes":
             from bilibili_transcript.archive_notes import archive_notes
             plan = archive_notes(Path(args.input), Path(args.transcript), uploader=args.uploader,

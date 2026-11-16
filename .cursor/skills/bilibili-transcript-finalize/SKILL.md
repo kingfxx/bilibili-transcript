@@ -59,8 +59,8 @@ python -m bilibili_transcript transcript "<BV号或链接>" \
 ```
 
 - 按需加 `--part N`（多 P 视频指定分 P）；不指定则自动处理所有分 P
-- cookie：自动加载项目根目录 `bili_cookie.txt`
-- **先看日志确认 cookie 登录态**：出现 `Cookie 登录态有效: xxx (mid=xxx)` → cookie 有效；若提示失效/无法确认（SESSDATA 过期等）→ **先提示用户刷新 bili_cookie.txt，不要走 ASR**
+- cookie：优先复用已配置的共享浏览器登录，否则加载项目根目录 `bili_cookie.txt`。
+- **先看日志确认 cookie 登录态**：出现 `已从专用浏览器取得有效的 B 站登录态` 或 `Cookie 登录态有效` 即通过。专用浏览器要求登录时运行 `python -m bilibili_transcript browser-login`；使用文件登录时可改用共享浏览器或刷新文件。登录态失效或无法确认时不走 ASR。
 - 产出后检查 JSON 的 `part_sources[].mode`：
   - `official_cc` / `ytdlp_subtitle_file` / `srt` → 有字幕，直接进入 ②
   - 报错"官方字幕不可用"：可加 `--ytdlp-subs` 再试一次（yt-dlp 字幕仍属字幕路径）；仍失败 → 进入 Step 2

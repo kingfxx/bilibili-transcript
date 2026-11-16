@@ -20,6 +20,7 @@ dependencies = [
 bilibili-transcript = "bilibili_transcript.cli:main"
 
 [project.optional-dependencies]
+browser = ["playwright>=1.40"]
 dev = [
     "pytest>=7.0",
 ]

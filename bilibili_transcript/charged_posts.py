@@ -11,6 +11,7 @@ import time
 
 import requests
 
+from bilibili_transcript.browser_login import BROWSER_PROFILE, browser_login_ready, session_from_browser
 from bilibili_transcript.text_post import sanitize_filename_title
 from bilibili_transcript.wbi import session_with_cookies_file, verify_cookie_login
 
@@ -89,7 +90,10 @@ def post_body(item):
     if opus.get("title"):
         parts.append(f"**{opus['title']}**")
     if text:
-        parts.append(text.replace("\r\n", "\n"))
+        # Bilibili uses single newlines for paragraphs; Markdown treats them as
+        # soft wraps. Keep the author's boundaries as Markdown paragraphs.
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        parts.append(re.sub(r"\n(?:[ \t]*\n)*", "\n\n", text))
     pictures = opus.get("pics") or (major.get("draw") or {}).get("items") or []
     for index, pic in enumerate(pictures, 1):
         url = pic.get("url") or pic.get("src")
@@ -130,15 +134,23 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("uploader", type=extract_mid, help="UP 主 UID 或主页链接")
     parser.add_argument("-o", "--output-dir", type=Path, required=True, help="输出目录，一个 UP 主一个 MD")
-    parser.add_argument("--cookies-file", default=str(PROJECT_ROOT / "bili_cookie.txt"))
+    login_options = parser.add_mutually_exclusive_group()
+    login_options.add_argument("--cookies-file", help="指定 Cookie 文件，直接使用文件登录态")
+    login_options.add_argument("--browser-login", action="store_true", help="打开专用浏览器，等待首次登录或重新登录")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:
-        session = session_with_cookies_file("", args.cookies_file)
-        session.headers["Referer"] = f"https://space.bilibili.com/{args.uploader}/dynamic"
-        if not verify_cookie_login(session).get("ok"):
-            raise RuntimeError("Cookie 登录态无效或无法验证，请更新 Cookie 后重试")
-        name, posts = collect_posts(session, args.uploader)
+        referer = f"https://space.bilibili.com/{args.uploader}/dynamic"
+        if args.browser_login or (args.cookies_file is None and browser_login_ready()):
+            session = session_from_browser(BROWSER_PROFILE, referer, interactive=args.browser_login)
+        else:
+            session = session_with_cookies_file("", args.cookies_file or str(PROJECT_ROOT / "bili_cookie.txt"))
+            session.headers["Referer"] = referer
+            if not verify_cookie_login(session).get("ok"):
+                session.close()
+                raise RuntimeError("Cookie 登录态无效或无法验证，请运行 python -m bilibili_transcript browser-login")
+        with session:
+            name, posts = collect_posts(session, args.uploader)
         if not posts:
             raise RuntimeError("未找到充电专属动态，未创建或覆盖文件")
         markdown = render_markdown(name, args.uploader, posts)

@@ -14,10 +14,18 @@ python -m bilibili_transcript transcript "BV1xxxxxxxxx" -o case_outputs/BV1xxxxx
 > 不带子命令的旧式调用（`python -m bilibili_transcript "BV..."`）仍兼容。
 > 子命令：`transcript`（抓字幕/转录）、`export-html`（导出 HTML）、`merge-parts`（合并分P）、`index-html`（重建总目）。
 
-> **登录态（可选但推荐）**：部分稿件的字幕仅在登录后返回。把浏览器扩展导出的 cookie 保存为
-> 项目根目录下的 `bili_cookie.txt`（JSON 数组或 Netscape 格式均可），脚本会自动加载；
-> 也可用 `--cookies-file path/to/cookies.txt` 指定其他位置，或用 `--cookies-from-browser chrome`
-> 直接从浏览器读取（注意新版 Chrome/Edge 加密可能读取失败）。
+## B 站共享浏览器登录
+
+视频转录和充电动态共用同一个专用浏览器配置。首次在项目目录运行：
+
+```powershell
+python -m pip install -e ".[browser]"
+python -m bilibili_transcript browser-login
+```
+
+在打开的 Chrome 或 Edge 窗口里登录 B 站。Windows 上登录后请关闭专用窗口，脚本会重新打开浏览器校验登录态。成功后登录态保存在本地 `.bilibili_browser_profile`。以后运行普通抓取或转录命令时，脚本会自动打开 B 站，让网页处理续期，并读取当前 Cookie。视频转录使用本次运行的临时 Cookie 文件供字幕和 yt-dlp 使用，结束后自动删除。如果 B 站要求重新登录，再执行 `browser-login`。
+
+显式 `--cookies-file` 或转录的 `--cookies-from-browser` 可覆盖共享浏览器设置。未配置共享浏览器时，默认仍读取项目根目录的 `bili_cookie.txt`。
 
 ## 充电专属动态归档
 
@@ -27,7 +35,9 @@ python -m bilibili_transcript transcript "BV1xxxxxxxxx" -o case_outputs/BV1xxxxx
 python -m bilibili_transcript.charged_posts 3546781568731724 --output-dir "D:\backup\wiz_export\Evernote\投资\买股票的老木匠_充电"
 ```
 
-默认加载项目根目录 `bili_cookie.txt`，也可指定 `--cookies-file`。文件名为 `UP主名字_充电.md`；正文以北京时间 `## YYYY-MM-DD HH:MM` 分标题，最新动态在前，保留原文、来源链接和图片链接。视频动态保存动态文字与视频链接，不自动转录视频。仅归档当前登录态有权访问的内容；权限受限、正文截断或分页异常时终止，不覆盖已有归档。重复执行会重新抓取并更新同名文件。
+共享浏览器需要登录具有对应充电权限的 B 站账号。
+
+文件名为 `UP主名字_充电.md`；正文以北京时间 `## YYYY-MM-DD HH:MM` 分标题，最新动态在前，保留原文、来源链接和图片链接，原文换行转为 Markdown 空行以保留分段。视频动态保存动态文字与视频链接，不自动转录视频。仅归档当前登录态有权访问的内容；权限受限、正文截断或分页异常时终止，不覆盖已有归档。重复执行会重新抓取并更新同名文件。
 
 ## 视频截图与图文学习笔记
 
@@ -120,17 +130,17 @@ tools/
 3. **本机 faster-whisper ASR** — 以上均不可用时的兜底（官方字幕确认没有、且 cookie 登录态有效时才走）
 
 部分稿件的字幕**仅在登录态返回**。未登录时接口返回空列表属正常现象，不是 bug。
-脚本会按优先级注入登录态：项目根目录 `bili_cookie.txt`（默认）→ `--cookies-file` 显式指定 → `--cookies-from-browser`。
+脚本优先使用命令行显式指定的 Cookie 来源，其次复用已配置的共享浏览器登录，最后读取项目根目录 `bili_cookie.txt`。
 两种 cookie 格式均支持：浏览器扩展导出的 **JSON 数组**（EditThisCookie / Cookie-Editor 格式）与 **Netscape**（yt-dlp 兼容）。
 
-运行时会先**验证 cookie 登录态**：日志出现 `Cookie 登录态有效: xxx (mid=xxx)` 说明登录有效；cookie 过期（SESSDATA 失效）或无法确认时会提示，此时应先刷新 `bili_cookie.txt`。
+日志出现 `已从专用浏览器取得有效的 B 站登录态` 或 `Cookie 登录态有效` 表示校验通过。专用浏览器要求重新登录时运行 `python -m bilibili_transcript browser-login`。
 
 ## 常用参数
 
 
 | 场景               | 参数                                                        |
 | ---------------- | --------------------------------------------------------- |
-| 默认（能抓字幕就不 ASR）   | 无额外参数（自动加载根目录 `bili_cookie.txt`）                 |
+| 默认（能抓字幕就不 ASR）   | 无额外参数（自动复用已配置的共享浏览器登录）                 |
 | 登录字幕在网页有、接口无     | `--cookies-file bili_cookie.txt` 或 `--cookies-from-browser chrome` |
 | 强制 ASR           | `--force-asr`                                             |
 | 禁用音频转写（只用字幕） | `--no-asr`（字幕不可用时直接报错，不下载音频）                  |
